@@ -48,6 +48,7 @@ Use this workflow for the regular QuantSkills community brief.
    - Treat repositories with no accepted baseline as `test-required`: newly uploaded projects must be tested before they are marked accepted.
    - Treat changed repositories as `test-required` when code, scripts, dependencies, workflow files, `SKILL.md`, `AGENTS.md`, `skill.yml`, `agents/`, or `references/` changed, or when the changed-file scope cannot be determined.
    - Treat documentation, license, examples, or static-asset-only updates as `review-only`: inspect claims, links, licenses, and risk language; if no problem is found, tests may be skipped.
+   - Add `--run-update-tests --local-root D:/quantskill` only when the user explicitly wants local test or smoke-test commands to run. The script records blocked results when no checkout or deterministic test command is found.
    - After tests pass or a review-only update is accepted, write the baseline explicitly with `--write-state --mark-tested <repo>`; use `--mark-tested all` only after every current repository has been tested or accepted.
 
 4. Run the repository structure audit.
@@ -61,6 +62,7 @@ Use this workflow for the regular QuantSkills community brief.
    - Prioritize new repositories that violate naming rules.
    - Prioritize `test-required` update-check actions before any public listing or release recommendation.
    - Prioritize skill repositories missing `SKILL.md`, `GPL-3.0-only`, `LICENSE`, Chinese-first `README.md`, `README.en.md`, or five-runtime adapter entrypoints.
+   - When local checkouts are available, scan README / declaration / manifest text for possible secret assignments, over-promising return or official-verification claims, missing `GPL-3.0-only` metadata, and missing non-investment-advice risk disclosure for investment workflows.
    - For `skill-*` repositories missing `SKILL.md` and `agent-*` repositories missing `AGENTS.md`, keep the repository private and leave a bilingual remediation Issue with the community rules link.
    - When the missing declaration is fixed, the repository has no fail-level audit issues, and an open remediation Issue exists, plan or apply public visibility restoration with `--plan-public-restore` / `--apply-public-restore`.
    - Report potentially stale or invalid repositories: archived, disabled, empty or uninitialized repositories, repositories without a default branch, or repositories older than the configured stale threshold without pushes.
@@ -102,9 +104,10 @@ Use this workflow for the regular QuantSkills community brief.
 6. Add `--plan-index-updates --local-root D:/quantskill` to compare public `skill-*` and `agent-*` inventory against `.github`, `registry`, and `quantskills/quantskills` local files.
 7. Add `--apply-index-updates --local-root D:/quantskill` only after explicit maintainer approval to synchronize the GitHub organization homepage, registry artifacts, and quantskills navigation through local scripts.
 8. Add `--plan-update-tests --state-file <path>` to compare the current inventory with the accepted update-check baseline.
-9. Add `--write-state --mark-tested <repo>` only after tests pass or a review-only update is accepted.
-10. Add `--apply-governance-actions` only for the remote remediation mode described in the guardrails.
-11. Review the Markdown or JSON report before any GitHub rename, push, public visibility change, registry update, homepage publication, or update baseline write.
+9. Add `--run-update-tests --local-root D:/quantskill` with `--test-repo <repo>` when selected test-required repositories should run detected local tests.
+10. Add `--write-state --mark-tested <repo>` only after tests pass or a review-only update is accepted.
+11. Add `--apply-governance-actions` only for the remote remediation mode described in the guardrails.
+12. Review the Markdown or JSON report before any GitHub rename, push, public visibility change, registry update, homepage publication, or update baseline write.
 
 ## Checks
 
@@ -116,7 +119,7 @@ For repositories without a prefix, infer the intended type from root declaration
 - `AGENTS.md` or agent/workflow/automation keywords suggest an `agent-` repository.
 - Unknown cases are reported for maintainer classification instead of being renamed automatically.
 
-Repository homepage structure checks require a root `README.md`. Skill repositories should also expose `SKILL.md`, `README.en.md`, GPL licensing, and runtime adapter files when publishing under QuantSkills rules.
+Repository homepage structure checks require a root `README.md`. Skill repositories should also expose `SKILL.md`, `README.en.md`, GPL licensing, and runtime adapter files when publishing under QuantSkills rules. Runtime checks map root `SKILL.md` to Codex and Claude Code, `agents/cursor-rule.mdc` to Cursor, `agents/portable-loader.md` to Hermes, and `agents/openai.yaml` or `agents/portable-loader.md` to OpenClaw.
 
 Index checks are target-specific. The `homepage` target is the GitHub organization profile shown at `https://github.com/quantskills` and is backed by `.github/profile/README.md`. The `registry` target ignores `skill-template`, `agent-template`, and repositories quarantined by the latest local registry scan report. The `quantskills` target should not list private remediation repositories.
 
@@ -126,6 +129,8 @@ Update checks maintain a local JSON state file. The state stores the last observ
 - `review-only` for documentation, license, example, or static-asset-only updates; tests can be skipped only after the review finds no issue.
 - `skip` for repositories unchanged from the accepted baseline.
 
+Local test execution is explicit. `--run-update-tests` detects repository-local commands such as `scripts/validate.py`, `python -m unittest discover -s tests`, `npm test`, or Python compile smoke checks. Missing local checkouts or missing deterministic commands are reported as blocked, not as passed.
+
 ## Guardrails
 
 - Do not automatically rename GitHub repositories.
@@ -134,6 +139,7 @@ Update checks maintain a local JSON state file. The state stores the last observ
 - Treat generated rename commands and README fixes as proposals until a maintainer approves them.
 - Treat `--apply-governance-actions` as a guarded remote remediation mode: only missing-declaration repositories may be made private, while naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and declaration-file failures may create or update bilingual community-rule Issues.
 - Treat `--apply-index-updates` as a guarded local sync mode: update the GitHub organization homepage source file and run registry/quantskills generators locally; commits and pushes still require explicit publication approval and separate worktree validation.
+- Treat `--run-update-tests` as evidence collection only. Do not mark a repository accepted until the test result is passed or a review-only decision has been manually accepted.
 - Treat `--apply-public-restore` as a narrow restoration mode: only private prefixed repositories with a matching open remediation Issue and no fail-level checks may be set back to public.
 - Do not use `--mark-tested` until the repository tests have passed or the review-only change has been manually accepted.
 

@@ -57,6 +57,13 @@ RUNTIME_FILES = [
     "agents/cursor-rule.mdc",
     "agents/portable-loader.md",
 ]
+RUNTIME_REQUIREMENTS = [
+    ("codex", ("SKILL.md",)),
+    ("claude-code", ("SKILL.md",)),
+    ("cursor", ("agents/cursor-rule.mdc",)),
+    ("hermes", ("agents/portable-loader.md",)),
+    ("openclaw", ("agents/openai.yaml", "agents/portable-loader.md")),
+]
 REGISTRY_INDEX_EXCLUDED_REPOS = {"agent-template", "skill-template"}
 ISSUE_REMEDIATION_CODES = {
     "repository-prefix",
@@ -68,8 +75,27 @@ ISSUE_REMEDIATION_CODES = {
     "agent-declaration",
     "english-readme",
     "license",
+    "license-metadata",
     "runtime-adapter",
+    "sensitive-content",
+    "overpromise",
+    "risk-disclosure",
 }
+SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)(api[_-]?key|secret|token|password|passwd|access[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9_./+=:-]{16,}"
+)
+OVERPROMISE_RE = re.compile(
+    r"(?i)(guaranteed\s+(profit|return|alpha)|risk[- ]?free|officially\s+verified|certified\s+profit|稳赚|保收益|保证收益|无风险收益|官方认证|官方验证)"
+)
+INVESTMENT_WORKFLOW_RE = re.compile(
+    r"(?i)(factor|alpha|strategy|backtest|trading|signal|portfolio|因子|策略|回测|交易|信号|组合)"
+)
+RISK_DISCLOSURE_RE = re.compile(
+    r"(?i)(not\s+investment\s+advice|does\s+not\s+constitute\s+investment\s+advice|不构成投资建议|非投资建议)"
+)
+NEGATED_CLAIM_RE = re.compile(
+    r"(?i)(do\s+not|does\s+not|must\s+not|should\s+not|not\s+imply|not\s+represent|without|不得|不要|不能|不应|不代表|不自动|禁止)"
+)
 SKILL_KEYWORDS = {
     "skill",
     "factor",
@@ -391,6 +417,22 @@ def nested_file_exists(repo_dir: Path | None, relative_path: str) -> bool:
     return bool(repo_dir and (repo_dir / relative_path).is_file())
 
 
+def repository_path_exists(repo_dir: Path | None, root_names: set[str], relative_path: str) -> bool:
+    return relative_path in root_names or nested_file_exists(repo_dir, relative_path)
+
+
+def read_local_text(repo_dir: Path | None, relative_path: str) -> str:
+    if not repo_dir:
+        return ""
+    path = repo_dir / relative_path
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return ""
+
+
 def root_readme_status(root_names: set[str]) -> tuple[str, str | None]:
     if "README.md" in root_names:
         return "ok", None
@@ -456,6 +498,93 @@ def make_issue(
     if action:
         issue["action"] = action
     return issue
+
+
+def runtime_adapter_issues(root_names: set[str], repo_dir: Path | None) -> list[dict[str, str]]:
+    issues = []
+    for runtime, candidates in RUNTIME_REQUIREMENTS:
+        if any(repository_path_exists(repo_dir, root_names, candidate) for candidate in candidates):
+            continue
+        issues.append(
+            make_issue(
+                "runtime-adapter",
+                "warn",
+                f"Skill repository is missing {runtime} runtime adapter entrypoint.",
+                f"Add one of: {', '.join(candidates)}.",
+            )
+        )
+    return issues
+
+
+def has_unnegated_overpromise(text: str) -> bool:
+    for match in OVERPROMISE_RE.finditer(text):
+        context = text[max(0, match.start() - 80) : match.start()]
+        if not NEGATED_CLAIM_RE.search(context):
+            return True
+    return False
+
+
+def content_policy_issues(
+    repo_dir: Path | None,
+    root_names: set[str],
+    inferred_type: str | None,
+    repo: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    if not repo_dir:
+        return []
+    texts = {
+        relative: read_local_text(repo_dir, relative)
+        for relative in ("README.md", "README.en.md", "SKILL.md", "AGENTS.md", "skill.yml")
+        if repository_path_exists(repo_dir, root_names, relative)
+    }
+    combined = "\n".join(texts.values())
+    issues: list[dict[str, str]] = []
+    if inferred_type == "skill" and "SKILL.md" in texts:
+        metadata_text = "\n".join([texts.get("SKILL.md", ""), texts.get("skill.yml", "")])
+        if "GPL-3.0-only" not in metadata_text:
+            issues.append(
+                make_issue(
+                    "license-metadata",
+                    "fail",
+                    "Skill metadata does not declare GPL-3.0-only.",
+                    "Add license: GPL-3.0-only to SKILL.md metadata or skill.yml.",
+                )
+            )
+    if combined and SENSITIVE_ASSIGNMENT_RE.search(combined):
+        issues.append(
+            make_issue(
+                "sensitive-content",
+                "fail",
+                "Possible API key, token, password, or secret assignment appears in public-facing text.",
+                "Remove secrets and replace examples with placeholders.",
+            )
+        )
+    if combined and has_unnegated_overpromise(combined):
+        issues.append(
+            make_issue(
+                "overpromise",
+                "fail",
+                "Project text appears to promise returns, imply official verification, or overstate safety.",
+                "Rewrite claims to be factual, non-promotional, and maintainer-reviewed.",
+            )
+        )
+    identity_text = " ".join(
+        [
+            str((repo or {}).get("name", "")),
+            str((repo or {}).get("description", "") or ""),
+            " ".join(str(topic) for topic in (repo or {}).get("topics", []) or []),
+        ]
+    )
+    if inferred_type == "skill" and combined and INVESTMENT_WORKFLOW_RE.search(identity_text) and not RISK_DISCLOSURE_RE.search(combined):
+        issues.append(
+            make_issue(
+                "risk-disclosure",
+                "warn",
+                "Quant investment workflow text is missing a clear non-investment-advice risk disclosure.",
+                "State data sources, assumptions, limitations, risk boundaries, and that outputs are not investment advice.",
+            )
+        )
+    return issues
 
 
 def generated_readme(repo: dict[str, Any], inferred_type: str | None) -> str:
@@ -614,16 +743,8 @@ def audit_repo(
                     "Add GPLv3 LICENSE and declare GPL-3.0-only in metadata.",
                 )
             )
-        for runtime_file in ([] if agents_unavailable else RUNTIME_FILES):
-            if runtime_file not in root_names and not nested_file_exists(repo_dir, runtime_file):
-                issues.append(
-                    make_issue(
-                        "runtime-adapter",
-                        "warn",
-                        f"Skill repository is missing {runtime_file}.",
-                        "Add runtime adapter files before publication.",
-                    )
-                )
+        if not agents_unavailable:
+            issues.extend(runtime_adapter_issues(root_names, repo_dir))
 
     if inferred_type == "agent" and not root_unavailable and "AGENTS.md" not in root_names:
         issues.append(
@@ -634,6 +755,8 @@ def audit_repo(
                 "Add AGENTS.md with description, usage, maintainer, supported scenarios, limitations, and metadata.",
             )
         )
+
+    issues.extend(content_policy_issues(repo_dir, root_names, inferred_type, repo))
 
     return {
         "name": name,
@@ -715,6 +838,10 @@ def audit(args: argparse.Namespace) -> dict[str, Any]:
             "update_tests_required": 0,
             "update_review_only": 0,
             "update_skipped": 0,
+            "test_run_results": 0,
+            "test_run_passed": 0,
+            "test_run_failed": 0,
+            "test_run_blocked": 0,
         },
         "repositories": results,
         "governance_actions": [],
@@ -723,6 +850,7 @@ def audit(args: argparse.Namespace) -> dict[str, Any]:
         "index_update_actions": [],
         "index_apply_actions": [],
         "update_check_actions": [],
+        "test_run_results": [],
     }
 
 
@@ -1922,6 +2050,124 @@ def build_update_state(
     }
 
 
+def detect_test_commands(repo_dir: Path, python_bin: str) -> list[list[str]]:
+    commands: list[list[str]] = []
+    if (repo_dir / "scripts" / "validate.py").is_file():
+        commands.append([python_bin, "scripts/validate.py"])
+    if (repo_dir / "tests").is_dir():
+        commands.append([python_bin, "-m", "unittest", "discover", "-s", "tests"])
+    if (repo_dir / "package.json").is_file():
+        commands.append(["npm", "test"])
+    if not commands and any((repo_dir / name).is_file() for name in ("pyproject.toml", "requirements.txt")):
+        commands.append([python_bin, "-m", "compileall", "-q", "."])
+    return commands
+
+
+def run_local_test_command(command: list[str], repo_dir: Path, timeout: int) -> dict[str, Any]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(repo_dir),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": " ".join(command),
+            "status": "timeout",
+            "returncode": None,
+            "stdout": (exc.stdout or "")[-2000:] if isinstance(exc.stdout, str) else "",
+            "stderr": (exc.stderr or "")[-2000:] if isinstance(exc.stderr, str) else "",
+        }
+    except OSError as exc:
+        return {
+            "command": " ".join(command),
+            "status": "blocked",
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+    return {
+        "command": " ".join(command),
+        "status": "passed" if result.returncode == 0 else "failed",
+        "returncode": result.returncode,
+        "stdout": result.stdout.strip()[-2000:],
+        "stderr": result.stderr.strip()[-2000:],
+    }
+
+
+def run_update_tests(
+    report: dict[str, Any],
+    local_root: Path | None,
+    selected_repos: list[str],
+    python_bin: str,
+    timeout: int,
+) -> list[dict[str, Any]]:
+    if not local_root:
+        return [
+            {
+                "repo": None,
+                "status": "blocked",
+                "reason": "Rerun with --local-root D:/quantskill to run local update tests.",
+                "commands": [],
+            }
+        ]
+    selected = set(selected_repos or [])
+    actions = report.get("update_check_actions", [])
+    results: list[dict[str, Any]] = []
+    for action in actions:
+        repo_name = action["repo"]
+        if selected and repo_name not in selected:
+            continue
+        if action.get("status") != "test-required":
+            continue
+        repo_dir = local_repo_dir(local_root, repo_name)
+        if not repo_dir:
+            results.append(
+                {
+                    "repo": repo_name,
+                    "status": "blocked",
+                    "reason": "local checkout not found",
+                    "commands": [],
+                }
+            )
+            continue
+        commands = detect_test_commands(repo_dir, python_bin)
+        if not commands:
+            results.append(
+                {
+                    "repo": repo_name,
+                    "status": "blocked",
+                    "reason": "no deterministic local test command detected",
+                    "commands": [],
+                }
+            )
+            continue
+        command_results = [run_local_test_command(command, repo_dir, timeout) for command in commands]
+        status = "passed" if all(item["status"] == "passed" for item in command_results) else "failed"
+        results.append(
+            {
+                "repo": repo_name,
+                "status": status,
+                "reason": "ran detected local test command(s)",
+                "commands": command_results,
+            }
+        )
+    return results
+
+
+def attach_test_run_results(report: dict[str, Any], results: list[dict[str, Any]]) -> None:
+    report["test_run_results"] = results
+    report["summary"]["test_run_results"] = len(results)
+    report["summary"]["test_run_passed"] = sum(1 for item in results if item.get("status") == "passed")
+    report["summary"]["test_run_failed"] = sum(1 for item in results if item.get("status") == "failed")
+    report["summary"]["test_run_blocked"] = sum(1 for item in results if item.get("status") == "blocked")
+
+
 def issue_summary(item: dict[str, Any]) -> str:
     if not item["issues"]:
         return "ok"
@@ -1951,6 +2197,10 @@ def to_markdown(report: dict[str, Any]) -> str:
         f"- Update tests required: `{report['summary'].get('update_tests_required', 0)}`",
         f"- Update review-only: `{report['summary'].get('update_review_only', 0)}`",
         f"- Update skipped: `{report['summary'].get('update_skipped', 0)}`",
+        f"- Test run results: `{report['summary'].get('test_run_results', 0)}`",
+        f"- Test run passed: `{report['summary'].get('test_run_passed', 0)}`",
+        f"- Test run failed: `{report['summary'].get('test_run_failed', 0)}`",
+        f"- Test run blocked: `{report['summary'].get('test_run_blocked', 0)}`",
         "",
         "## Summary Table",
         "",
@@ -2067,6 +2317,17 @@ def to_markdown(report: dict[str, Any]) -> str:
             f"- {state_write['status']}: `{state_write['path']}` "
             f"(marked: {', '.join(state_write.get('marked_repos') or ['none'])})"
         )
+    if report.get("test_run_results"):
+        lines.extend(["", "## Test Run Results", ""])
+        for result in report["test_run_results"]:
+            lines.append(f"- {result['status']}: `{result.get('repo')}` - {result.get('reason')}")
+            for command in result.get("commands", []):
+                line = f"  - {command['status']}: `{command['command']}`"
+                if command.get("returncode") is not None:
+                    line += f" (returncode={command['returncode']})"
+                lines.append(line)
+                if command.get("stderr"):
+                    lines.append(f"    - stderr: {command['stderr']}")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -2169,6 +2430,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--run-update-tests",
+        action="store_true",
+        help=(
+            "Run detected local test or smoke-test commands for repositories whose update-check "
+            "decision is test-required. Must be used with --plan-update-tests and --local-root."
+        ),
+    )
+    parser.add_argument(
+        "--test-repo",
+        action="append",
+        default=[],
+        help="Limit --run-update-tests to a repository name. May be repeated.",
+    )
+    parser.add_argument(
+        "--test-timeout",
+        type=int,
+        default=120,
+        help="Per-command timeout in seconds for --run-update-tests. Default: 120.",
+    )
+    parser.add_argument(
         "--state-file",
         help=(
             "JSON state file for update checks. Defaults to outputs/update-check-state.json "
@@ -2241,6 +2522,12 @@ def main(argv: list[str]) -> int:
     if args.apply_index_updates and not args.local_root:
         print("--apply-index-updates requires --local-root", file=sys.stderr)
         return 2
+    if args.run_update_tests and not args.plan_update_tests:
+        print("--run-update-tests requires --plan-update-tests", file=sys.stderr)
+        return 2
+    if args.run_update_tests and not args.local_root:
+        print("--run-update-tests requires --local-root", file=sys.stderr)
+        return 2
     update_state_path = Path(args.state_file) if args.state_file else default_update_state_path()
     try:
         report = audit(args)
@@ -2303,6 +2590,18 @@ def main(argv: list[str]) -> int:
                     bool(args.repositories_json),
                 ),
                 update_state_path,
+            )
+        if args.run_update_tests:
+            local_root = Path(args.local_root).resolve() if args.local_root else None
+            attach_test_run_results(
+                report,
+                run_update_tests(
+                    report,
+                    local_root,
+                    args.test_repo,
+                    args.python_bin,
+                    args.test_timeout,
+                ),
             )
         if args.write_state:
             next_state = build_update_state(

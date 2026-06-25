@@ -72,6 +72,54 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             ["skill-declaration"],
         )
 
+    def test_runtime_adapter_issues_name_missing_runtime(self):
+        issues = audit.runtime_adapter_issues({"SKILL.md", "agents/cursor-rule.mdc"}, None)
+        messages = [issue["message"] for issue in issues]
+
+        self.assertIn("Skill repository is missing hermes runtime adapter entrypoint.", messages)
+        self.assertIn("Skill repository is missing openclaw runtime adapter entrypoint.", messages)
+        self.assertNotIn("Skill repository is missing codex runtime adapter entrypoint.", messages)
+        self.assertNotIn("Skill repository is missing cursor runtime adapter entrypoint.", messages)
+
+    def test_content_policy_flags_missing_gpl_metadata(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "SKILL.md").write_text("---\nlicense: GPL-3.0\n---\n# Skill\n", encoding="utf-8")
+            issues = audit.content_policy_issues(root, {"SKILL.md"}, "skill")
+
+        self.assertIn("license-metadata", {issue["code"] for issue in issues})
+
+    def test_content_policy_ignores_negated_overpromise_examples(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "SKILL.md").write_text(
+                "---\nlicense: GPL-3.0-only\n---\nDo not imply guaranteed returns. 不自动代表官方验证或背书。",
+                encoding="utf-8",
+            )
+            issues = audit.content_policy_issues(
+                root,
+                {"SKILL.md"},
+                "skill",
+                {"name": "skill-governance-auditor", "description": "audit tooling"},
+            )
+
+        self.assertNotIn("overpromise", {issue["code"] for issue in issues})
+        self.assertNotIn("risk-disclosure", {issue["code"] for issue in issues})
+
+    def test_detect_test_commands_prefers_unittest_for_tests_dir(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tests").mkdir()
+            commands = audit.detect_test_commands(root, "python")
+
+        self.assertIn(["python", "-m", "unittest", "discover", "-s", "tests"], commands)
+
     def test_homepage_sync_covers_github_org_profile(self):
         from tempfile import TemporaryDirectory
 

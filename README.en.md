@@ -17,6 +17,8 @@ The update-check mode maintains a local JSON state file: newly uploaded projects
 
 This skill package is published under the personal repository `abgyjaguo/skill-quantskills-repo-auditor`; the organization it audits and synchronizes remains `quantskills`.
 
+When local checkouts are available, it also scans README, declaration, and manifest text for possible secrets, promised returns, official-endorsement claims, missing `GPL-3.0-only` metadata, and missing risk disclosure for investment workflows.
+
 ## Quick Start
 
 ```bash
@@ -65,6 +67,12 @@ Plan which new or changed repositories need tests:
 python scripts/audit_quantskills_repos.py --org quantskills --include-private --plan-update-tests --state-file outputs/update-check-state.json --local-root D:/quantskill --markdown report.md --json-output report.json
 ```
 
+Run detected local tests or smoke tests for selected test-required repositories:
+
+```bash
+python scripts/audit_quantskills_repos.py --org quantskills --include-private --plan-update-tests --run-update-tests --test-repo skill-example --state-file outputs/update-check-state.json --local-root D:/quantskill --markdown report.md --json-output report.json
+```
+
 After tests pass or a review-only update is accepted, explicitly write the accepted baseline:
 
 ```bash
@@ -88,7 +96,7 @@ python scripts/audit_quantskills_repos.py --org quantskills --include-private --
 The full Skill workflow has five phases:
 
 1. **Check today's community updates**: use the Asia/Shanghai day window to inspect newly created or updated `skill-*`, `agent-*`, `join`, `registry`, `.github`, and related repositories; capture important commits, Issues/PRs, failed Actions, maintainer-response items, and obvious local drift under `D:/quantskill`.
-2. **Plan update testing**: mark new repositories as `test-required`; for repositories changed after an accepted baseline, compare commits and changed files first. Runtime, code, structure, dependency, or unknown changes still require tests; low-risk documentation, license, example, or static asset changes are `review-only` and may skip tests after review.
+2. **Plan and run update testing**: mark new repositories as `test-required`; for repositories changed after an accepted baseline, compare commits and changed files first. Runtime, code, structure, dependency, or unknown changes still require tests; low-risk documentation, license, example, or static asset changes are `review-only` and may skip tests after review. With explicit `--run-update-tests`, local checkouts run detected commands such as `scripts/validate.py`, `python -m unittest discover -s tests`, `npm test`, or Python compile smoke checks; missing checkouts or missing deterministic commands are reported as blocked.
 3. **Identify risks needing attention**: prioritize naming violations, missing skill package files, `SKILL.md`, `GPL-3.0-only`, `LICENSE`, Chinese-first `README.md`, `README.en.md`, five-runtime adapters, over-promising descriptions, investment-advice risk, sensitive-information signals, blocked PRs/Issues, and dirty local worktrees. `skill-*` repositories missing `SKILL.md` and `agent-*` repositories missing `AGENTS.md` should be kept private with a bilingual remediation Issue and community rules link; after fixes, no fail-level audit issues, and a matching open remediation Issue, plan or apply public restoration.
 4. **Sync homepage / registry / quantskills**: when needed, update `D:/quantskill/.github/profile/README.md`, the source shown on [github.com/quantskills](https://github.com/quantskills), especially the Chinese `## 🗂️ 社区技能仓库一览` and English `## 🗂️ Community Skill Repositories` tables, so they match the current public `skill-*` inventory. Also check whether every public `skill-*` and `agent-*` repository needs corresponding entries in `registry` and `quantskills/quantskills`. Keep descriptions concise, honest, non-promotional, and do not include non-skill repositories in the skill table. Prefer repository build scripts for generated artifacts instead of editing generated files by hand.
 5. **Commit and push safely**: when the homepage changes, verify `.github` cleanliness, remote URL, Markdown/link/diff checks, then commit as `abgyjaguo <213890245+abgyjaguo@users.noreply.github.com>` and push `main`. Stop and report blockers on dirty worktrees, remote mismatch, credential failures, validation failures, or uncertainty.
@@ -103,7 +111,8 @@ The full Skill workflow has five phases:
 | Homepage README | A standard root `README.md` should exist |
 | Declaration file | Skill repositories should have `SKILL.md`; agent repositories should have `AGENTS.md` |
 | Bilingual docs | Published skill repositories should include Chinese-first `README.md` and `README.en.md` |
-| Runtime entrypoints | Checks `agents/openai.yaml`, `agents/cursor-rule.mdc`, and `agents/portable-loader.md` |
+| Runtime entrypoints | Codex / Claude Code use root `SKILL.md`; Cursor uses `agents/cursor-rule.mdc`; Hermes uses `agents/portable-loader.md`; OpenClaw uses `agents/openai.yaml` or the portable loader |
+| Content compliance | With local checkouts, scans for secret-shaped assignments, promised returns, endorsement claims, `GPL-3.0-only` metadata, and investment risk disclosure |
 | Update testing | New projects and high-risk updates are `test-required`, low-risk docs/assets changes are `review-only`, unchanged repositories are `skip` |
 | Index sync | GitHub organization homepage comes from `.github/profile/README.md`; `registry` follows generator rules for templates and quarantined entries; `quantskills` should list public repositories only |
 
@@ -112,6 +121,8 @@ The full Skill workflow has five phases:
 By default, the script does not rename GitHub repositories, push commits, delete repositories, or change repository visibility. Remote governance writes require the explicit `--apply-governance-actions` or `--apply-public-restore` flag.
 
 The state file is written only when `--write-state` is passed. Do not use `--mark-tested` until tests have passed or the review-only change has been accepted.
+
+`--run-update-tests` only collects evidence. It does not automatically write the accepted baseline; use `--write-state --mark-tested` only after tests pass or a review-only decision is accepted.
 
 The GitHub organization homepage, `registry`, and `quantskills` are index targets. `--apply-index-updates` updates `.github/profile/README.md` and runs the local registry / quantskills generator scripts. Commits and pushes still require separate validation of worktree status, remotes, LICENSE, bilingual READMEs, and credentials.
 

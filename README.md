@@ -17,6 +17,8 @@
 
 本 Skill 包发布目标是个人仓库 `abgyjaguo/skill-quantskills-repo-auditor`；它审计和同步的目标仍然是 `quantskills` 组织。
 
+当本地 checkout 存在时，它还会扫描 README、声明文件和 manifest 文本，提示可能的密钥、收益承诺、官方背书、缺少 `GPL-3.0-only` 元数据和投资工作流风险声明问题。
+
 ## 快速开始
 
 ```bash
@@ -65,6 +67,12 @@ python scripts/audit_quantskills_repos.py --org quantskills --include-private --
 python scripts/audit_quantskills_repos.py --org quantskills --include-private --plan-update-tests --state-file outputs/update-check-state.json --local-root D:/quantskill --markdown report.md --json-output report.json
 ```
 
+对需要测试的本地仓库运行可识别的测试或 smoke test：
+
+```bash
+python scripts/audit_quantskills_repos.py --org quantskills --include-private --plan-update-tests --run-update-tests --test-repo skill-example --state-file outputs/update-check-state.json --local-root D:/quantskill --markdown report.md --json-output report.json
+```
+
 测试通过或低风险更新复核通过后，显式写入验收基线：
 
 ```bash
@@ -88,7 +96,7 @@ python scripts/audit_quantskills_repos.py --org quantskills --include-private --
 这个 Skill 的完整工作流分为五段：
 
 1. **检查今日社区更新**：按 Asia/Shanghai 今日窗口检查 `quantskills` 组织中新建或更新的 `skill-*`、`agent-*`、`join`、`registry`、`.github` 等仓库，记录重要提交、Issue/PR、失败 Actions、需要维护者响应的事项，并检查 `D:/quantskill` 本地嵌套仓库与远端的明显不同步状态。
-2. **规划更新测试**：对新仓库输出 `test-required`；对已验收后更新的仓库先比较 commit/文件范围，运行时代码和结构变更继续测试，低风险文档/许可证/示例/静态资源变更进入 `review-only`，复核无问题再跳过测试并写入基线。
+2. **规划和运行更新测试**：对新仓库输出 `test-required`；对已验收后更新的仓库先比较 commit/文件范围，运行时代码和结构变更继续测试，低风险文档/许可证/示例/静态资源变更进入 `review-only`。显式传入 `--run-update-tests` 时，会对本地 checkout 运行 `scripts/validate.py`、`python -m unittest discover -s tests`、`npm test` 或 Python 编译 smoke test；找不到 checkout 或测试命令会标记为 blocked。
 3. **识别需要注意的风险**：重点看新仓库命名、skill 包结构、`SKILL.md`、`GPL-3.0-only`、`LICENSE`、中文优先 `README.md`、`README.en.md`、五运行时入口、过度承诺、投资建议风险、敏感信息迹象、发布阻塞 PR/Issue 和本地脏工作区。`skill-*` 缺 `SKILL.md`、`agent-*` 缺 `AGENTS.md` 时，仓库应设为 private，并留言中英文整改 Issue 和社区规则链接；修复、无 fail 级问题且仍有打开的整改 Issue 后，再规划或执行恢复 public。
 4. **同步组织主页 / registry / quantskills**：必要时更新 `D:/quantskill/.github/profile/README.md`，也就是 [github.com/quantskills](https://github.com/quantskills) 组织首页显示的源文件，使中文 `## 🗂️ 社区技能仓库一览` 和英文 `## 🗂️ Community Skill Repositories` 表格匹配 GitHub org 当前公开 `skill-*` 清单；同时检查 public `skill-*` / `agent-*` 是否需要进入 `registry` 和 `quantskills/quantskills`。不把非 `skill-*` 仓库放入技能表，描述保持简洁、诚实、不夸大；生成型文件优先运行各仓库脚本，不手工编辑生成产物。
 5. **安全提交和推送**：主页有变化时，先检查 `.github` 工作区、远端 URL、Markdown/链接/差异，再用 `abgyjaguo <213890245+abgyjaguo@users.noreply.github.com>` 提交并推送 `main`；任何不确定、脏工作区、远端不匹配、凭据或验证失败都停止并写入简报。
@@ -103,7 +111,8 @@ python scripts/audit_quantskills_repos.py --org quantskills --include-private --
 | 首页 README | 根目录应有标准 `README.md` |
 | 声明文件 | skill 仓库应有 `SKILL.md`，agent 仓库应有 `AGENTS.md` |
 | 双语文档 | 发布型 skill 仓库应有中文优先 `README.md` 和 `README.en.md` |
-| 运行时入口 | 检查 `agents/openai.yaml`、`agents/cursor-rule.mdc`、`agents/portable-loader.md` |
+| 运行时入口 | Codex / Claude Code 使用根 `SKILL.md`；Cursor 使用 `agents/cursor-rule.mdc`；Hermes 使用 `agents/portable-loader.md`；OpenClaw 使用 `agents/openai.yaml` 或 portable loader |
+| 内容合规 | 本地 checkout 存在时扫描密钥形态、收益承诺、官方背书、`GPL-3.0-only` 元数据和投资风险声明 |
 | 更新测试 | 新项目和高风险更新为 `test-required`，低风险文档/资产变更为 `review-only`，未变化为 `skip` |
 | 索引同步 | GitHub 组织首页来自 `.github/profile/README.md`；`registry` 按生成器规则忽略模板和 quarantined 项；`quantskills` 只应展示公开仓库 |
 
@@ -112,6 +121,8 @@ python scripts/audit_quantskills_repos.py --org quantskills --include-private --
 默认扫描不会自动重命名 GitHub 仓库，不会 push，不会删除仓库，也不会更改仓库可见性。远端治理修复必须显式使用 `--apply-governance-actions` 或 `--apply-public-restore`。
 
 状态文件默认只在显式传入 `--write-state` 时写入；不要在测试未通过或低风险复核未完成前使用 `--mark-tested`。
+
+`--run-update-tests` 只收集测试证据，不会自动写入验收基线。只有测试通过或 `review-only` 复核通过后，才使用 `--write-state --mark-tested`。
 
 GitHub 组织首页、`registry` 与 `quantskills` 都是索引目标。`--apply-index-updates` 会更新 `.github/profile/README.md`，并运行 registry / quantskills 的本地生成脚本；提交和推送仍需要单独验证工作区、远端 URL、LICENSE、双语 README 和凭据。
 

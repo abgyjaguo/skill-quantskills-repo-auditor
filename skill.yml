@@ -1,0 +1,35 @@
+organization: abgyjaguo
+organization_url: https://github.com/abgyjaguo
+repository: skill-quantskills-repo-auditor
+repository_url: https://github.com/abgyjaguo/skill-quantskills-repo-auditor
+project_type: skill
+collection: community-governance
+target_organization: QuantSkills
+target_organization_url: https://github.com/quantskills
+license: GPL-3.0-only
+category: tooling
+tags:
+  - github
+  - audit
+  - repository
+  - governance
+  - readme
+  - registry
+  - index-sync
+  - update-check
+  - vetting
+platforms:
+  - claude-code
+  - codex
+  - cursor
+  - hermes
+  - openclaw
+language: zh-en
+status: draft
+validation_level: runnable
+maintainer_type: community
+requires: []
+creator: abgyjaguo
+maintainer: abgyjaguo
+summary_zh: "扫描 QuantSkills 组织仓库命名、声明文件、更新测试决策、可见性治理、失效仓库和主页/registry/quantskills 索引同步情况。"
+summary_en: "Audits QuantSkills repositories for naming, declaration files, update-test decisions, visibility governance, stale repositories, and homepage/registry/quantskills index sync."

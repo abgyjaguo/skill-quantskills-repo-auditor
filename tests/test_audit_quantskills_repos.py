@@ -239,6 +239,63 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             self.assertIn("中文摘要", text)
             self.assertIn("English summary", text)
 
+    def test_quantskills_index_detects_private_unprefixed_extra(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github" / "profile").mkdir(parents=True)
+            (root / ".github" / "profile" / "README.md").write_text(
+                "https://github.com/quantskills/skill-a\n",
+                encoding="utf-8",
+            )
+            (root / "registry").mkdir()
+            (root / "registry" / "registry.json").write_text(
+                '[{"name":"skill-a"}]',
+                encoding="utf-8",
+            )
+            (root / "quantskills" / "data").mkdir(parents=True)
+            (root / "quantskills" / "data" / "curation.json").write_text(
+                '{"denylist":["deleted-repo"]}',
+                encoding="utf-8",
+            )
+            (root / "quantskills" / "README.md").write_text(
+                "\n".join(
+                    [
+                        "https://github.com/quantskills/skill-a",
+                        "https://github.com/quantskills/metadata-repo",
+                        "https://github.com/quantskills/news-sentiment-analyst",
+                        "https://github.com/quantskills/deleted-repo",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            report = {
+                "org": "quantskills",
+                "repositories": [
+                    {"name": "skill-a", "private": False, "archived": False, "disabled": False},
+                    {"name": "metadata-repo", "private": False, "archived": False, "disabled": False},
+                    {
+                        "name": "news-sentiment-analyst",
+                        "private": True,
+                        "archived": False,
+                        "disabled": False,
+                    },
+                    {"name": "deleted-repo", "private": False, "archived": False, "disabled": False},
+                ],
+            }
+
+            actions = audit.index_update_records(report, root)
+
+        by_target = {action["target"]: action for action in actions}
+        self.assertIn("quantskills", by_target)
+        self.assertEqual(by_target["quantskills"]["missing"], [])
+        self.assertEqual(
+            by_target["quantskills"]["extra"],
+            ["deleted-repo", "news-sentiment-analyst"],
+        )
+        self.assertEqual(by_target["quantskills"]["ignored_present"], ["deleted-repo"])
+
     def test_skill_docs_do_not_contain_common_mojibake_tokens(self):
         mojibake_tokens = ["�", "绠€", "鎵", "馃"]
         for relative in ["SKILL.md", "README.md", "README.en.md", "skill.yml"]:

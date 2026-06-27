@@ -1261,7 +1261,7 @@ def attach_stale_repositories(report: dict[str, Any], records: list[dict[str, An
     report["summary"]["stale_repositories"] = len(records)
 
 
-def extract_repo_mentions(path: Path, org: str) -> set[str] | None:
+def extract_repo_mentions(path: Path, org: str, prefixes: tuple[str, ...] | None = ("skill-", "agent-")) -> set[str] | None:
     if not path.is_file():
         return None
     text = path.read_text(encoding="utf-8-sig", errors="replace")
@@ -1275,7 +1275,9 @@ def extract_repo_mentions(path: Path, org: str) -> set[str] | None:
         )
     }
     mentions.update(re.findall(r'"name"\s*:\s*"([^"]+)"', text))
-    return {name for name in mentions if name.startswith(("skill-", "agent-"))}
+    if prefixes is None:
+        return mentions
+    return {name for name in mentions if name.startswith(prefixes)}
 
 
 def latest_registry_scan(local_root: Path) -> list[dict[str, Any]]:
@@ -1304,16 +1306,33 @@ def registry_quarantined_names(local_root: Path) -> set[str]:
     }
 
 
+def quantskills_denylist_names(local_root: Path) -> set[str]:
+    path = local_root / "quantskills" / "data" / "curation.json"
+    if not path.is_file():
+        return set()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    denylist = payload.get("denylist") if isinstance(payload, dict) else None
+    if not isinstance(denylist, list):
+        return set()
+    return {str(name) for name in denylist if name}
+
+
 def expected_index_names(report: dict[str, Any], target: str, local_root: Path) -> tuple[set[str], set[str]]:
-    expected = {
+    public_names = {
         item["name"]
         for item in report["repositories"]
-        if item["name"].startswith(("skill-", "agent-"))
-        and not item.get("private")
+        if not item.get("private")
         and not item.get("archived")
         and not item.get("disabled")
     }
     ignored: set[str] = set()
+    if target == "quantskills":
+        ignored.update(quantskills_denylist_names(local_root))
+        return public_names - ignored, ignored
+    expected = {name for name in public_names if name.startswith(("skill-", "agent-"))}
     if target == "registry":
         ignored.update(REGISTRY_INDEX_EXCLUDED_REPOS)
         ignored.update(registry_quarantined_names(local_root))
@@ -1337,7 +1356,8 @@ def index_update_records(report: dict[str, Any], local_root: Path | None) -> lis
     for target, relative_path, action_text in INDEX_TARGETS:
         path = local_root / relative_path
         expected, ignored = expected_index_names(report, target, local_root)
-        mentions = extract_repo_mentions(path, report["org"])
+        prefixes = None if target == "quantskills" else ("skill-", "agent-")
+        mentions = extract_repo_mentions(path, report["org"], prefixes)
         if mentions is None:
             actions.append(
                 {

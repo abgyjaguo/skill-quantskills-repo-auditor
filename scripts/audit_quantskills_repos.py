@@ -81,6 +81,11 @@ ISSUE_REMEDIATION_CODES = {
     "overpromise",
     "risk-disclosure",
 }
+NAMING_REMEDIATION_CODES = {
+    "repository-prefix",
+    "repository-name-format",
+    "type-prefix-mismatch",
+}
 SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?i)(api[_-]?key|secret|token|password|passwd|access[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9_./+=:-]{16,}"
 )
@@ -932,7 +937,10 @@ def community_rule_issues(item: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def remediation_visibility_action(item: dict[str, Any]) -> str:
-    return "set-private" if declaration_remediation_target(item) else "no-visibility-change"
+    issue_codes = {issue["code"] for issue in item.get("issues", [])}
+    if declaration_remediation_target(item) or issue_codes.intersection(NAMING_REMEDIATION_CODES):
+        return "set-private"
+    return "no-visibility-change"
 
 
 def community_rule_issue_body(
@@ -1012,6 +1020,15 @@ def governance_action_records(report: dict[str, Any], rules_url: str) -> list[di
                 "kind": kind,
                 "declaration": declaration,
                 "issue_codes": sorted({issue.get("code", "unknown") for issue in issues}),
+                "reasons": [
+                    {
+                        "code": issue.get("code", "unknown"),
+                        "severity": issue.get("severity", "warn"),
+                        "message": issue.get("message", ""),
+                        "action": issue.get("action", "Maintainer review required."),
+                    }
+                    for issue in issues
+                ],
                 "issue_count": len(issues),
                 "status": "planned",
                 "visibility_action": remediation_visibility_action(item),
@@ -1984,7 +2001,10 @@ def update_head_names_needed(
     needed: set[str] = set()
     previous = state.get("repositories", {})
     if plan_update_tests:
-        needed.update(item["name"] for item in report["repositories"])
+        for item in report["repositories"]:
+            prior = previous.get(item["name"], {}) if isinstance(previous.get(item["name"], {}), dict) else {}
+            if prior.get("accepted_fingerprint") or prior.get("accepted_head_sha"):
+                needed.add(item["name"])
     if write_state and marked_repos:
         if "all" in marked_repos:
             needed.update(item["name"] for item in report["repositories"])
@@ -2238,6 +2258,13 @@ def to_markdown(report: dict[str, Any]) -> str:
             )
             if codes:
                 line += f"; issues: {codes}"
+            if action.get("visibility_action") == "set-private" and action.get("reasons"):
+                reasons = "; ".join(
+                    f"{reason.get('code', 'unknown')}: {reason.get('message', '')}"
+                    for reason in action["reasons"]
+                )
+                if reasons:
+                    line += f"; private reasons: {reasons}"
             if action.get("issue_url"):
                 line += f" ({action['issue_url']})"
             lines.append(line)

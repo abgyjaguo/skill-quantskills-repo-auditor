@@ -1,7 +1,7 @@
 interface:
   display_name: "QuantSkills Repo Auditor"
   short_description: "Audit QuantSkills repos, update-test decisions, governance issues, stale repos, and homepage / registry / quantskills sync."
-  default_prompt: "Use $quantskills-repo-auditor to scan the quantskills GitHub organization, identify newly uploaded or changed repositories that need testing, run detected local tests when explicitly requested, classify low-risk updates that can skip tests after review, report repository and content rule violations, plan or apply explicit community-rule remediation Issues, restore eligible fixed repositories to public when requested, and check or apply GitHub organization homepage / registry / quantskills index sync."
+  default_prompt: "Use $quantskills-repo-auditor to scan the quantskills GitHub organization, identify newly uploaded or changed repositories that need testing, classify low-risk updates that can skip tests after review, report repository and content rule violations, and check homepage / registry / quantskills index sync. After each patrol, list candidate actions, every repository that would be set private with reasons, and wait for maintainer confirmation before running tests, applying remediation Issues, changing visibility, updating indexes, writing state, committing, or pushing. When remote index sync is approved, keep .github, registry, and quantskills synchronized by committing, pushing, and verifying all changed targets."
 policy:
   allow_implicit_invocation: true
 metadata:

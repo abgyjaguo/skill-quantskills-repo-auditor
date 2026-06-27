@@ -14,7 +14,7 @@ spec.loader.exec_module(audit)
 
 
 class AuditQuantskillsReposTests(unittest.TestCase):
-    def test_update_plan_fetches_current_heads_for_all_repos(self):
+    def test_update_plan_skips_head_fetch_for_unaccepted_repos(self):
         report = {
             "repositories": [
                 {"name": "skill-a"},
@@ -22,6 +22,32 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             ]
         }
         state = {"repositories": {}}
+
+        needed = audit.update_head_names_needed(
+            report,
+            state,
+            marked_repos=[],
+            plan_update_tests=True,
+            write_state=False,
+        )
+
+        self.assertEqual(needed, set())
+
+    def test_update_plan_fetches_current_heads_for_accepted_repos(self):
+        report = {
+            "repositories": [
+                {"name": "skill-a"},
+                {"name": "skill-b"},
+                {"name": "skill-c"},
+            ]
+        }
+        state = {
+            "repositories": {
+                "skill-a": {"accepted_head_sha": "a"},
+                "skill-b": {"accepted_fingerprint": "b"},
+                "skill-c": {},
+            }
+        }
 
         needed = audit.update_head_names_needed(
             report,
@@ -46,6 +72,13 @@ class AuditQuantskillsReposTests(unittest.TestCase):
                     ],
                 },
                 {
+                    "name": "bad-name",
+                    "inferred_type": "skill",
+                    "issues": [
+                        {"code": "repository-prefix", "severity": "fail", "message": "bad name"},
+                    ],
+                },
+                {
                     "name": "skill-missing-declaration",
                     "inferred_type": "skill",
                     "issues": [
@@ -63,6 +96,9 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             by_repo["skill-bad-name"]["issue_codes"],
             ["english-readme", "license", "runtime-adapter"],
         )
+        self.assertEqual(by_repo["bad-name"]["visibility_action"], "set-private")
+        self.assertEqual(by_repo["bad-name"]["issue_codes"], ["repository-prefix"])
+        self.assertEqual(by_repo["bad-name"]["reasons"][0]["message"], "bad name")
         self.assertEqual(
             by_repo["skill-missing-declaration"]["visibility_action"],
             "set-private",
@@ -71,6 +107,26 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             by_repo["skill-missing-declaration"]["issue_codes"],
             ["skill-declaration"],
         )
+
+    def test_naming_governance_actions_set_private(self):
+        for issue_code in audit.NAMING_REMEDIATION_CODES:
+            with self.subTest(issue_code=issue_code):
+                report = {
+                    "repositories": [
+                        {
+                            "name": f"repo-{issue_code}",
+                            "inferred_type": "skill",
+                            "issues": [
+                                {"code": issue_code, "severity": "fail", "message": "bad name"},
+                            ],
+                        }
+                    ]
+                }
+
+                actions = audit.governance_action_records(report, audit.COMMUNITY_RULES_URL)
+
+                self.assertEqual(actions[0]["visibility_action"], "set-private")
+                self.assertEqual(actions[0]["issue_codes"], [issue_code])
 
     def test_runtime_adapter_issues_name_missing_runtime(self):
         issues = audit.runtime_adapter_issues({"SKILL.md", "agents/cursor-rule.mdc"}, None)

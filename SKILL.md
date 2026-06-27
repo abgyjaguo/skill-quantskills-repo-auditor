@@ -55,21 +55,27 @@ Use this workflow for the regular QuantSkills community brief.
    - Run `python scripts/audit_quantskills_repos.py --org quantskills --include-private --plan-governance-actions --plan-public-restore --report-stale-repos --plan-index-updates --local-root D:/quantskill` when credentials and local checkouts are available.
    - Add `--local-root D:/quantskill` when local checkouts should be inspected.
    - Add `--fix-local-readme` only when the user explicitly wants local checkout README files generated or copied into the repository root.
-   - Add `--apply-governance-actions` only when the user explicitly asks to apply safe remote governance issues. This can set declaration-missing `skill-*` / `agent-*` repositories to private and create or update a bilingual community-rule remediation Issue for naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and missing declaration files.
+   - Add `--apply-governance-actions` only when the user explicitly asks to apply safe remote governance issues. This can set naming-noncompliant repositories and declaration-missing `skill-*` / `agent-*` repositories to private, and create or update a bilingual community-rule remediation Issue for naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and missing declaration files.
    - Add `--apply-public-restore` only when the user explicitly asks to restore eligible repositories after fixes. This can set private `skill-*` / `agent-*` repositories back to public when an open remediation Issue exists and the declaration problem plus other fail-level audit issues are resolved.
 
-5. Identify items requiring user attention.
+5. Stop for maintainer confirmation before applying changes.
+   - After a patrol or audit run, present grouped candidate actions and wait for the user to choose what to do next.
+   - Do not run `--apply-governance-actions`, `--apply-public-restore`, `--apply-index-updates`, `--write-state`, Git commits, or Git pushes in the same response that reports the patrol results unless the user already explicitly approved those exact actions.
+   - Include the expected effect and scope for each candidate action: affected repository names, whether it writes GitHub Issues, changes repository visibility, writes local index files, runs tests, or writes the update-check baseline.
+   - Always list every repository that would be set to private and the human-readable reasons before applying `--apply-governance-actions`.
+
+6. Identify items requiring user attention.
    - Prioritize new repositories that violate naming rules.
    - Prioritize `test-required` update-check actions before any public listing or release recommendation.
    - Prioritize skill repositories missing `SKILL.md`, `GPL-3.0-only`, `LICENSE`, Chinese-first `README.md`, `README.en.md`, or five-runtime adapter entrypoints.
    - When local checkouts are available, scan README / declaration / manifest text for possible secret assignments, over-promising return or official-verification claims, missing `GPL-3.0-only` metadata, and missing non-investment-advice risk disclosure for investment workflows.
-   - For `skill-*` repositories missing `SKILL.md` and `agent-*` repositories missing `AGENTS.md`, keep the repository private and leave a bilingual remediation Issue with the community rules link.
+   - For repositories with naming rule violations, `skill-*` repositories missing `SKILL.md`, and `agent-*` repositories missing `AGENTS.md`, keep the repository private and leave a bilingual remediation Issue with the community rules link.
    - When the missing declaration is fixed, the repository has no fail-level audit issues, and an open remediation Issue exists, plan or apply public visibility restoration with `--plan-public-restore` / `--apply-public-restore`.
    - Report potentially stale or invalid repositories: archived, disabled, empty or uninitialized repositories, repositories without a default branch, or repositories older than the configured stale threshold without pushes.
    - Flag project descriptions that over-promise, imply investment advice, or claim official/verified/production-ready status without approval.
    - Flag possible sensitive information in public repositories, blocked PRs or Issues, failed workflows, and dirty local worktrees that affect sync safety.
 
-6. Sync the organization homepage when needed.
+7. Sync the organization homepage when needed.
    - Compare the live public `skill-*` inventory with `D:/quantskill/.github/profile/README.md`.
    - Update the Chinese `## 🗂️ 社区技能仓库一览` and English `## 🗂️ Community Skill Repositories` tables so they reflect the current public `skill-*` repositories.
    - Preserve the existing page structure and bilingual style.
@@ -78,10 +84,11 @@ Use this workflow for the regular QuantSkills community brief.
    - Keep the agent repository table aligned with public `agent-*` inventory when necessary, while treating skill inventory as the primary target.
    - For every public `skill-*` and `agent-*`, check whether corresponding entries need to be reflected in the GitHub organization homepage (`.github/profile/README.md` shown at `https://github.com/quantskills`), `registry`, and `quantskills/quantskills`; generated files should be regenerated through their repository scripts instead of hand-editing generated artifacts.
    - Use `--apply-index-updates --local-root D:/quantskill` only when the user explicitly asks to synchronize indexes. It updates `.github/profile/README.md`, runs the registry generator, and runs the quantskills navigation generator.
+   - When the user asks for remote index synchronization, keep all three targets aligned remotely: `.github/profile/README.md`, `registry`, and `quantskills/quantskills`. Apply local generation first, then commit and push every changed target repository, and verify each pushed remote branch matches its local HEAD. Report unchanged targets explicitly.
    - Treat `registry` as a generated asset with target-specific rules: `skill-template` and `agent-template` are intentionally excluded, and repositories marked `quarantined` by the latest `registry/reports/scan-*.json` should not be reported as missing from `registry.json`.
    - Treat `quantskills/quantskills` as a public-navigation site: its generator should use public GitHub repositories only and can use local `registry/registry.json` metadata when the registry has just been regenerated locally.
 
-7. Commit and push homepage changes only when safe.
+8. Commit and push homepage changes only when safe.
    - If `D:/quantskill/.github/profile/README.md` changed, first confirm `D:/quantskill/.github` is clean or only contains this task's edits.
    - Verify the remote URL is `https://github.com/quantskills/.github`.
    - Run reasonable Markdown, link, and diff checks.
@@ -89,7 +96,7 @@ Use this workflow for the regular QuantSkills community brief.
    - Push to `main` only after validation passes.
    - If the worktree is dirty, remote does not match, credentials fail, validation fails, or risk is uncertain, do not force-push or overwrite user changes; report the blocker.
 
-8. Produce the Chinese community brief.
+9. Produce the Chinese community brief.
    - Use exactly these sections: `今日社区更新`, `需要我注意`, `主页技能仓库一览更新结果`, `验证/推送状态`, `下一步建议`.
    - Include concrete repository names, links, PR or Issue numbers, workflow names, and commit hashes when available.
    - If there are no updates, state the checked scope and exact audit window.
@@ -107,7 +114,7 @@ Use this workflow for the regular QuantSkills community brief.
 9. Add `--run-update-tests --local-root D:/quantskill` with `--test-repo <repo>` when selected test-required repositories should run detected local tests.
 10. Add `--write-state --mark-tested <repo>` only after tests pass or a review-only update is accepted.
 11. Add `--apply-governance-actions` only for the remote remediation mode described in the guardrails.
-12. Review the Markdown or JSON report before any GitHub rename, push, public visibility change, registry update, homepage publication, or update baseline write.
+12. Review the Markdown or JSON report and ask the user to choose next actions before any GitHub rename, Issue write, visibility change, test execution, state write, registry update, homepage publication, commit, or push. If the user chooses remote index sync, publish `.github`, `registry`, and `quantskills` together or report the blocker that prevents keeping them synchronized.
 
 ## Checks
 
@@ -137,8 +144,10 @@ Local test execution is explicit. `--run-update-tests` detects repository-local 
 - Do not push commits, make repositories public, or update organization settings unless the user explicitly asks for that publication action.
 - Do not delete, transfer, or destroy repositories through automation.
 - Treat generated rename commands and README fixes as proposals until a maintainer approves them.
-- Treat `--apply-governance-actions` as a guarded remote remediation mode: only missing-declaration repositories may be made private, while naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and declaration-file failures may create or update bilingual community-rule Issues.
-- Treat `--apply-index-updates` as a guarded local sync mode: update the GitHub organization homepage source file and run registry/quantskills generators locally; commits and pushes still require explicit publication approval and separate worktree validation.
+- Treat every patrol result as a decision checkpoint: report candidate actions first and stop for user confirmation before applying them.
+- Before applying governance, show the full set-private candidate list with reasons.
+- Treat `--apply-governance-actions` as a guarded remote remediation mode: naming-rule violations and missing-declaration repositories may be made private, while naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and declaration-file failures may create or update bilingual community-rule Issues.
+- Treat `--apply-index-updates` as the local generation step for a guarded index sync. For remote index sync, also validate, commit, push, and verify `.github`, `registry`, and `quantskills` so the organization homepage, registry, and navigation repository remain synchronized.
 - Treat `--run-update-tests` as evidence collection only. Do not mark a repository accepted until the test result is passed or a review-only decision has been manually accepted.
 - Treat `--apply-public-restore` as a narrow restoration mode: only private prefixed repositories with a matching open remediation Issue and no fail-level checks may be set back to public.
 - Do not use `--mark-tested` until the repository tests have passed or the review-only change has been manually accepted.

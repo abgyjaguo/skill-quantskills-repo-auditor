@@ -56,7 +56,9 @@ Use this workflow for the regular QuantSkills community brief.
    - Add `--local-root D:/quantskill` when local checkouts should be inspected.
    - Add `--fix-local-readme` only when the user explicitly wants local checkout README files generated or copied into the repository root.
    - Add `--apply-governance-actions` only when the user explicitly asks to apply safe remote governance issues. This can set naming-noncompliant repositories and declaration-missing `skill-*` / `agent-*` repositories to private, and create or update a bilingual community-rule remediation Issue for naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and missing declaration files.
+   - When `--apply-governance-actions` sees a public repository that no longer has community-rule remediation issues, it comments on and closes the matching open remediation Issue.
    - Add `--apply-public-restore` only when the user explicitly asks to restore eligible repositories after fixes. This can set private `skill-*` / `agent-*` repositories back to public when an open remediation Issue exists and the declaration problem plus other fail-level audit issues are resolved.
+   - When `--apply-public-restore` restores an eligible repository to public, it also comments on and closes the matched remediation Issue.
 
 5. Stop for maintainer confirmation before applying changes.
    - After a patrol or audit run, present grouped candidate actions and wait for the user to choose what to do next.
@@ -84,6 +86,7 @@ Use this workflow for the regular QuantSkills community brief.
    - Keep the agent repository table aligned with public `agent-*` inventory when necessary, while treating skill inventory as the primary target.
    - For every public `skill-*` and `agent-*`, check whether corresponding entries need to be reflected in the GitHub organization homepage (`.github/profile/README.md` shown at `https://github.com/quantskills`), `registry`, and `quantskills/quantskills`; generated files should be regenerated through their repository scripts instead of hand-editing generated artifacts.
    - Use `--apply-index-updates --local-root D:/quantskill` only when the user explicitly asks to synchronize indexes. It updates `.github/profile/README.md`, runs the registry generator, and runs the quantskills navigation generator.
+   - During `--apply-index-updates`, registry generation runs before quantskills navigation generation. Registry categories are used to update `quantskills/data/curation.json` so public registry-listed skills can appear in the correct navigation category instead of falling into "Repos not in catalog".
    - When the user asks for remote index synchronization, keep all three targets aligned remotely: `.github/profile/README.md`, `registry`, and `quantskills/quantskills`. Apply local generation first, then commit and push every changed target repository, and verify each pushed remote branch matches its local HEAD. Report unchanged targets explicitly.
    - Treat `registry` as a generated asset with target-specific rules: `skill-template` and `agent-template` are intentionally excluded, and repositories marked `quarantined` by the latest `registry/reports/scan-*.json` should not be reported as missing from `registry.json`.
    - Treat `quantskills/quantskills` as a public-navigation site: its generator should use public GitHub repositories only and can use local `registry/registry.json` metadata when the registry has just been regenerated locally.
@@ -110,6 +113,7 @@ Use this workflow for the regular QuantSkills community brief.
 5. Add `--report-stale-repos` to report archived, disabled, empty, uninitialized, or stale repositories.
 6. Add `--plan-index-updates --local-root D:/quantskill` to compare public `skill-*` and `agent-*` inventory against `.github`, `registry`, and `quantskills/quantskills` local files.
 7. Add `--apply-index-updates --local-root D:/quantskill` only after explicit maintainer approval to synchronize the GitHub organization homepage, registry artifacts, and quantskills navigation through local scripts.
+   - This also synchronizes quantskills category overrides from registry metadata before generating navigation README files.
 8. Add `--plan-update-tests --state-file <path>` to compare the current inventory with the accepted update-check baseline.
 9. Add `--run-update-tests --local-root D:/quantskill` with `--test-repo <repo>` when selected test-required repositories should run detected local tests.
 10. Add `--write-state --mark-tested <repo>` only after tests pass or a review-only update is accepted.
@@ -149,7 +153,7 @@ Local test execution is explicit. `--run-update-tests` detects repository-local 
 - Treat `--apply-governance-actions` as a guarded remote remediation mode: naming-rule violations and missing-declaration repositories may be made private, while naming errors, missing `README.en.md`, missing `LICENSE`, missing runtime adapters, and declaration-file failures may create or update bilingual community-rule Issues.
 - Treat `--apply-index-updates` as the local generation step for a guarded index sync. For remote index sync, also validate, commit, push, and verify `.github`, `registry`, and `quantskills` so the organization homepage, registry, and navigation repository remain synchronized.
 - Treat `--run-update-tests` as evidence collection only. Do not mark a repository accepted until the test result is passed or a review-only decision has been manually accepted.
-- Treat `--apply-public-restore` as a narrow restoration mode: only private prefixed repositories with a matching open remediation Issue and no fail-level checks may be set back to public.
+- Treat `--apply-public-restore` as a narrow restoration mode: only private prefixed repositories with a matching open remediation Issue and no fail-level checks may be set back to public; the matched remediation Issue is then commented and closed.
 - Do not use `--mark-tested` until the repository tests have passed or the review-only change has been manually accepted.
 
 ## Output

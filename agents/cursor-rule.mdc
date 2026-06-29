@@ -25,7 +25,8 @@ Workflow:
 8. Use `--plan-public-restore`, `--report-stale-repos`, and `--plan-index-updates --local-root D:/quantskill` when checking fixed repositories, invalid repositories, or homepage / registry / quantskills sync needs.
 9. After each patrol, summarize candidate actions and stop for user confirmation before applying any action. Always list repositories that would be set private and their reasons.
 10. Use `--apply-index-updates --local-root D:/quantskill` only after the user explicitly asks to synchronize the GitHub organization homepage, registry, and quantskills indexes. For remote index sync, commit, push, and verify `.github`, `registry`, and `quantskills` together.
-11. Use `--apply-governance-actions` only after the user explicitly asks to apply community-rule remediation. It may set naming-noncompliant and missing-declaration repositories private, and may create/update Issues for naming errors, missing README.en, missing LICENSE, missing runtime adapters, and missing declarations.
-12. Use `--apply-public-restore` only after the user explicitly asks to restore eligible fixed repositories with a matching open remediation Issue to public.
-13. Treat rename, push, registry listing, homepage listing, transfer, and deletion operations as maintainer-controlled actions.
-14. Do not invent repository classifications when the script reports `unknown`; ask for maintainer classification or report it as unresolved.
+11. During index sync, registry generation feeds quantskills category overrides before navigation generation, so registry-categorized public skills appear in the right navigation category instead of "Repos not in catalog".
+12. Use `--apply-governance-actions` only after the user explicitly asks to apply community-rule remediation. It may set naming-noncompliant and missing-declaration repositories private, create/update Issues for active problems, and close matching remediation Issues when public repositories are now clean.
+13. Use `--apply-public-restore` only after the user explicitly asks to restore eligible fixed repositories with a matching open remediation Issue to public; the matched Issue is commented and closed after restoration.
+14. Treat rename, push, registry listing, homepage listing, transfer, and deletion operations as maintainer-controlled actions.
+15. Do not invent repository classifications when the script reports `unknown`; ask for maintainer classification or report it as unresolved.

@@ -296,6 +296,122 @@ class AuditQuantskillsReposTests(unittest.TestCase):
         )
         self.assertEqual(by_target["quantskills"]["ignored_present"], ["deleted-repo"])
 
+    def test_public_restore_closes_recorded_remediation_issue(self):
+        calls = []
+
+        def fake_github_request(method, url, token, data=None):
+            calls.append((method, url, data))
+            if method == "GET" and url.endswith("/issues?state=open&per_page=100"):
+                return [
+                    {
+                        "number": 1,
+                        "title": audit.COMMUNITY_REMEDIATION_TITLE_ZH,
+                        "html_url": "https://github.com/quantskills/agent-a/issues/1",
+                    }
+                ]
+            if method == "GET":
+                return {"private": True}
+            if method == "PATCH" and url.endswith("/issues/1"):
+                return {"number": 1, "html_url": "https://github.com/quantskills/agent-a/issues/1"}
+            return {}
+
+        original = audit.github_request
+        audit.github_request = fake_github_request
+        try:
+            report = {
+                "repositories": [
+                    {
+                        "name": "agent-a",
+                        "inferred_type": "agent",
+                        "private": True,
+                        "visibility": "private",
+                        "archived": False,
+                        "disabled": False,
+                        "issues": [],
+                    }
+                ]
+            }
+
+            actions = audit.apply_public_restore_actions(report, "quantskills", "token")
+        finally:
+            audit.github_request = original
+
+        self.assertEqual(actions[0]["visibility_action"], "changed-to-public")
+        self.assertEqual(actions[0]["issue_action"], "commented-and-closed #1")
+        self.assertTrue(any(call[0] == "POST" and call[1].endswith("/issues/1/comments") for call in calls))
+
+    def test_governance_apply_closes_resolved_public_remediation_issue(self):
+        calls = []
+
+        def fake_github_request(method, url, token, data=None):
+            calls.append((method, url, data))
+            if method == "GET" and url.endswith("/issues?state=open&per_page=100"):
+                return [
+                    {
+                        "number": 2,
+                        "title": audit.COMMUNITY_REMEDIATION_TITLE_ZH,
+                        "html_url": "https://github.com/quantskills/skill-a/issues/2",
+                    }
+                ]
+            if method == "PATCH" and url.endswith("/issues/2"):
+                return {"number": 2, "html_url": "https://github.com/quantskills/skill-a/issues/2"}
+            return {}
+
+        original = audit.github_request
+        audit.github_request = fake_github_request
+        try:
+            report = {
+                "repositories": [
+                    {
+                        "name": "skill-a",
+                        "inferred_type": "skill",
+                        "private": False,
+                        "visibility": "public",
+                        "issues": [],
+                    }
+                ]
+            }
+
+            actions = audit.apply_governance_actions(report, "quantskills", "token", audit.COMMUNITY_RULES_URL)
+        finally:
+            audit.github_request = original
+
+        self.assertEqual(actions[0]["repo"], "skill-a")
+        self.assertEqual(actions[0]["issue_action"], "commented-and-closed #2")
+        self.assertTrue(any(call[0] == "POST" and call[1].endswith("/issues/2/comments") for call in calls))
+
+    def test_quantskills_curation_sync_adds_registry_factor_category(self):
+        import json
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "registry").mkdir()
+            (root / "registry" / "registry.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "name": "skill-factor-optimize",
+                            "category": "factor",
+                            "tags": ["factor-optimize"],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (root / "quantskills" / "data").mkdir(parents=True)
+            curation = root / "quantskills" / "data" / "curation.json"
+            curation.write_text(
+                json.dumps({"org": "quantskills", "denylist": [], "infra": [], "categoryOverride": {}}),
+                encoding="utf-8",
+            )
+
+            result = audit.sync_quantskills_curation_from_registry(root)
+
+            payload = json.loads(curation.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(payload["categoryOverride"]["skill-factor-optimize"], "02")
+
     def test_skill_docs_do_not_contain_common_mojibake_tokens(self):
         mojibake_tokens = ["�", "绠€", "鎵", "馃"]
         for relative in ["SKILL.md", "README.md", "README.en.md", "skill.yml"]:

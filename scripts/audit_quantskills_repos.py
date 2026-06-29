@@ -65,6 +65,24 @@ RUNTIME_REQUIREMENTS = [
     ("openclaw", ("agents/openai.yaml", "agents/portable-loader.md")),
 ]
 REGISTRY_INDEX_EXCLUDED_REPOS = {"agent-template", "skill-template"}
+REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY = {
+    "data": "01",
+    "data-api": "01",
+    "warehouse": "01",
+    "factor": "02",
+    "factor-research": "02",
+    "market": "03",
+    "instrument": "03",
+    "risk": "04",
+    "alert": "04",
+    "backtest": "05",
+    "trading": "05",
+    "research": "06",
+    "replication": "06",
+    "prediction": "07",
+    "search": "08",
+    "web-scraping": "08",
+}
 ISSUE_REMEDIATION_CODES = {
     "repository-prefix",
     "repository-name-format",
@@ -1075,6 +1093,7 @@ def apply_governance_actions(
             action["issue_action"] = f"created #{issue['number']}"
         action["issue_url"] = issue.get("html_url")
         action["status"] = "applied"
+    actions.extend(close_resolved_remediation_issue_actions(report, org, token))
     return actions
 
 
@@ -1145,6 +1164,7 @@ def public_restore_action_records(
                 "status": "planned",
                 "visibility_action": "set-public",
                 "issue_action": issue_action,
+                "issue_number": existing["number"],
                 "issue_url": issue_url,
             }
         )
@@ -1167,6 +1187,72 @@ def declaration_resolved_comment(repo_name: str, declaration: str) -> str:
     )
 
 
+def remediation_resolved_comment(repo_name: str) -> str:
+    return (
+        "## \u590d\u6838\u7ed3\u679c\n\n"
+        f"\u672c\u8f6e\u5ba1\u8ba1\u672a\u518d\u68c0\u6d4b\u5230 `{repo_name}` \u7684 "
+        "QuantSkills \u793e\u533a\u89c4\u5219\u6574\u6539\u9879\uff0c\u672c Issue \u5df2\u6309"
+        "\u81ea\u52a8\u590d\u6838\u7ed3\u679c\u5173\u95ed\u3002\u5982\u540e\u7eed\u518d\u51fa\u73b0"
+        "\u547d\u540d\u3001README\u3001LICENSE\u3001\u5143\u6570\u636e\u3001\u8fd0\u884c\u65f6"
+        "\u9002\u914d\u6216\u98ce\u9669\u62ab\u9732\u95ee\u9898\uff0c\u7ef4\u62a4\u8005\u4f1a"
+        "\u91cd\u65b0\u6253\u5f00\u6216\u521b\u5efa\u6574\u6539 Issue\u3002\n\n"
+        "---\n\n"
+        "## Review Result\n\n"
+        f"The current audit no longer detects QuantSkills community-rule remediation items "
+        f"for `{repo_name}`, so this Issue is closed by the automated review. If naming, "
+        "README, license, metadata, runtime adapter, or risk-disclosure issues reappear, "
+        "maintainers may reopen this Issue or create a new remediation Issue."
+    )
+
+
+def close_resolved_remediation_issue_actions(
+    report: dict[str, Any],
+    org: str,
+    token: str,
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for item in report["repositories"]:
+        if community_rule_issues(item):
+            continue
+        if item.get("private") or item.get("visibility") == "private":
+            continue
+        repo_name = item["name"]
+        repo_api = f"https://api.github.com/repos/{urllib.parse.quote(org)}/{urllib.parse.quote(repo_name)}"
+        issues_url = f"{repo_api}/issues?state=open&per_page=100"
+        issues = github_request("GET", issues_url, token)
+        existing = matching_remediation_issue(issues if isinstance(issues, list) else [])
+        if not existing:
+            continue
+        github_request(
+            "POST",
+            f"{repo_api}/issues/{existing['number']}/comments",
+            token,
+            {"body": remediation_resolved_comment(repo_name)},
+        )
+        issue = github_request(
+            "PATCH",
+            f"{repo_api}/issues/{existing['number']}",
+            token,
+            {"state": "closed"},
+        )
+        actions.append(
+            {
+                "repo": repo_name,
+                "kind": item.get("inferred_type", "unknown"),
+                "declaration": None,
+                "issue_codes": [],
+                "reasons": [],
+                "issue_count": 0,
+                "status": "applied",
+                "visibility_action": "no-visibility-change",
+                "issue_action": f"commented-and-closed #{issue['number']}",
+                "rules_url": COMMUNITY_RULES_URL,
+                "issue_url": issue.get("html_url"),
+            }
+        )
+    return actions
+
+
 def apply_public_restore_actions(
     report: dict[str, Any],
     org: str,
@@ -1183,19 +1269,17 @@ def apply_public_restore_actions(
         else:
             action["visibility_action"] = "already-public"
 
-        issues_url = f"{repo_api}/issues?state=open&per_page=100"
-        issues = github_request("GET", issues_url, token)
-        existing = matching_remediation_issue(issues if isinstance(issues, list) else [])
-        if existing:
+        issue_number = action.get("issue_number")
+        if issue_number:
             github_request(
                 "POST",
-                f"{repo_api}/issues/{existing['number']}/comments",
+                f"{repo_api}/issues/{issue_number}/comments",
                 token,
-                {"body": declaration_resolved_comment(repo_name, action["declaration"])},
+                {"body": remediation_resolved_comment(repo_name)},
             )
             issue = github_request(
                 "PATCH",
-                f"{repo_api}/issues/{existing['number']}",
+                f"{repo_api}/issues/{issue_number}",
                 token,
                 {"state": "closed"},
             )
@@ -1479,6 +1563,99 @@ def registry_summary_maps(local_root: Path) -> dict[str, dict[str, str]]:
     return summaries
 
 
+def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
+    curation_path = local_root / "quantskills" / "data" / "curation.json"
+    registry_path = local_root / "registry" / "registry.json"
+    if not curation_path.is_file():
+        return {
+            "target": "quantskills-curation",
+            "status": "blocked",
+            "path": str(curation_path),
+            "action": "quantskills curation.json is missing",
+        }
+    if not registry_path.is_file():
+        return {
+            "target": "quantskills-curation",
+            "status": "blocked",
+            "path": str(registry_path),
+            "action": "registry.json is missing; run registry generation first",
+        }
+    try:
+        curation = json.loads(curation_path.read_text(encoding="utf-8-sig"))
+        registry = json.loads(registry_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "target": "quantskills-curation",
+            "status": "blocked",
+            "path": str(curation_path),
+            "action": f"failed to read curation or registry JSON: {exc}",
+        }
+    if not isinstance(curation, dict) or not isinstance(registry, list):
+        return {
+            "target": "quantskills-curation",
+            "status": "blocked",
+            "path": str(curation_path),
+            "action": "curation.json must be an object and registry.json must be an array",
+        }
+
+    overrides = curation.setdefault("categoryOverride", {})
+    if not isinstance(overrides, dict):
+        return {
+            "target": "quantskills-curation",
+            "status": "blocked",
+            "path": str(curation_path),
+            "action": "categoryOverride must be an object",
+        }
+    denylist = set(curation.get("denylist") or [])
+    infra = set(curation.get("infra") or [])
+    added: dict[str, str] = {}
+    for entry in registry:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "")
+        if (
+            not name
+            or name in denylist
+            or name in infra
+            or name in overrides
+            or name.startswith("agent-")
+            or name.endswith("-template")
+        ):
+            continue
+        category = str(entry.get("category") or "").strip().lower()
+        target = REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
+        if not target:
+            tags = [str(tag).lower() for tag in entry.get("tags", []) if tag]
+            if any("factor" in tag or "alpha" in tag for tag in tags):
+                target = "02"
+        if target:
+            overrides[name] = target
+            added[name] = target
+
+    if not added:
+        return {
+            "target": "quantskills-curation",
+            "status": "unchanged",
+            "path": str(curation_path),
+            "action": "categoryOverride already covers registry-categorized public skill repositories",
+            "added": {},
+        }
+
+    curation["categoryOverride"] = dict(sorted(overrides.items(), key=lambda item: (item[1], item[0].lower())))
+    curation_path.write_text(
+        json.dumps(curation, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return {
+        "target": "quantskills-curation",
+        "status": "updated",
+        "path": str(curation_path),
+        "action": "synchronized quantskills categoryOverride from registry categories",
+        "added": added,
+    }
+
+
 def safe_repo_summary(item: dict[str, Any], lang: str) -> str:
     description = str(item.get("description") or "").strip()
     if description:
@@ -1723,6 +1900,7 @@ def apply_index_updates(
                 "action": "registry generator script is missing",
             }
         )
+    records.append(sync_quantskills_curation_from_registry(local_root))
     quantskills_script = local_root / "quantskills" / "scripts" / "build.mjs"
     if quantskills_script.is_file():
         env = dict(os.environ)

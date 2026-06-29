@@ -17,9 +17,10 @@ When the user request matches this skill's SKILL.md description:
 8. Use `--plan-public-restore`, `--report-stale-repos`, and `--plan-index-updates --local-root D:/quantskill` when the request covers public restoration, invalid repository reporting, or homepage / registry / quantskills sync checks.
 9. After each patrol, summarize candidate actions and stop for user confirmation before applying any action. Always list repositories that would be set private and their reasons.
 10. Use `--apply-index-updates --local-root D:/quantskill` only after the user explicitly asks to synchronize the GitHub organization homepage, registry, and quantskills indexes. For remote index sync, commit, push, and verify `.github`, `registry`, and `quantskills` together.
-11. Use `--apply-governance-actions` only after the user explicitly asks to apply community-rule remediation. It may set naming-noncompliant and missing-declaration repositories private, and may create/update Issues for naming errors, missing README.en, missing LICENSE, missing runtime adapters, and missing declarations.
-12. Use `--apply-public-restore` only after the user explicitly asks to restore eligible fixed repositories with a matching open remediation Issue to public.
-13. Do not rename repositories, push commits, delete repositories, transfer repositories, or delete repositories through this skill.
-14. Treat unknown skill/agent classifications as maintainer review items.
-15. Generate or copy local root README files only when `--fix-local-readme` is explicitly requested.
+11. During index sync, registry generation feeds quantskills category overrides before navigation generation, so registry-categorized public skills appear in the right navigation category instead of "Repos not in catalog".
+12. Use `--apply-governance-actions` only after the user explicitly asks to apply community-rule remediation. It may set naming-noncompliant and missing-declaration repositories private, create/update Issues for active problems, and close matching remediation Issues when public repositories are now clean.
+13. Use `--apply-public-restore` only after the user explicitly asks to restore eligible fixed repositories with a matching open remediation Issue to public; the matched Issue is commented and closed after restoration.
+14. Do not rename repositories, push commits, delete repositories, transfer repositories, or delete repositories through this skill.
+15. Treat unknown skill/agent classifications as maintainer review items.
+16. Generate or copy local root README files only when `--fix-local-readme` is explicitly requested.
 ```

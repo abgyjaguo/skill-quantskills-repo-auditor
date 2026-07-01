@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -300,7 +301,7 @@ def github_request(
             if exc.code not in {500, 502, 503, 504} or attempt == 2:
                 raise
             time.sleep(1.5 * (attempt + 1))
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError, ssl.SSLError):
             if attempt == 2:
                 raise
             time.sleep(1.5 * (attempt + 1))

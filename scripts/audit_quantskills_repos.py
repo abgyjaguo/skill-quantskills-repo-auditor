@@ -1908,6 +1908,7 @@ def run_generation_command(
     command: list[str],
     cwd: Path,
     env: dict[str, str] | None = None,
+    timeout: int = 900,
 ) -> dict[str, Any]:
     try:
         result = subprocess.run(
@@ -1919,7 +1920,18 @@ def run_generation_command(
             errors="replace",
             capture_output=True,
             check=False,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "target": target,
+            "status": "failed",
+            "path": str(cwd),
+            "action": " ".join(command),
+            "returncode": None,
+            "stdout": (exc.stdout or "").strip()[-2000:] if isinstance(exc.stdout, str) else "",
+            "stderr": f"command timed out after {timeout} seconds",
+        }
     except OSError as exc:
         return {
             "target": target,

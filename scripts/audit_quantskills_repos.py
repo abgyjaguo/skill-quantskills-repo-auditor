@@ -56,13 +56,16 @@ RUNTIME_FILES = [
     "agents/openai.yaml",
     "agents/cursor-rule.mdc",
     "agents/portable-loader.md",
+    ".cursor",
+    "HERMES.md",
+    "OPENCLAW.md",
 ]
 RUNTIME_REQUIREMENTS = [
     ("codex", ("SKILL.md",)),
     ("claude-code", ("SKILL.md",)),
-    ("cursor", ("agents/cursor-rule.mdc",)),
-    ("hermes", ("agents/portable-loader.md",)),
-    ("openclaw", ("agents/openai.yaml", "agents/portable-loader.md")),
+    ("cursor", ("agents/cursor-rule.mdc", ".cursor")),
+    ("hermes", ("agents/portable-loader.md", "HERMES.md")),
+    ("openclaw", ("agents/openai.yaml", "agents/portable-loader.md", "OPENCLAW.md")),
 ]
 REGISTRY_INDEX_EXCLUDED_REPOS = {"agent-template", "skill-template"}
 REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY = {

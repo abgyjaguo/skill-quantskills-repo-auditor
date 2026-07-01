@@ -86,6 +86,28 @@ REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY = {
     "search": "08",
     "web-scraping": "08",
 }
+QUANTSKILLS_CATEGORY_KEYWORDS = {
+    "01": ("pandadata", "data api", "warehouse", "dataset", "data source"),
+    "02": (
+        "alpha",
+        "factor",
+        "ic/ir",
+        "rank ic",
+        "information coefficient",
+        "factor evaluation",
+        "factor research",
+        "dragon-tiger",
+        "hotmoney",
+        "position concentration",
+        "main divergence",
+    ),
+    "03": ("market", "stock", "futures", "options", "macro", "valuation", "dossier"),
+    "04": ("risk", "alert", "exposure", "drawdown", "volatility"),
+    "05": ("backtest", "trading", "strategy", "signal", "portfolio"),
+    "06": ("research", "replication", "paper", "report"),
+    "07": ("prediction", "forecast", "model"),
+    "08": ("search", "scraping", "crawler", "web"),
+}
 ISSUE_REMEDIATION_CODES = {
     "repository-prefix",
     "repository-name-format",
@@ -787,6 +809,7 @@ def audit_repo(
     return {
         "name": name,
         "url": repo.get("html_url") or f"https://github.com/{org}/{name}",
+        "description": repo.get("description") or "",
         "visibility": repo.get("visibility") or ("private" if repo.get("private") else "public"),
         "private": bool(repo.get("private")),
         "archived": bool(repo.get("archived")),
@@ -1566,7 +1589,32 @@ def registry_summary_maps(local_root: Path) -> dict[str, dict[str, str]]:
     return summaries
 
 
-def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
+def infer_quantskills_category(name: str, entry: dict[str, Any] | None, repo: dict[str, Any] | None) -> str | None:
+    if name.startswith("agent-"):
+        return "09"
+
+    category = str((entry or {}).get("category") or "").strip().lower()
+    target = REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
+    if target:
+        return target
+
+    haystack_parts = [name]
+    for source in (entry, repo):
+        if not isinstance(source, dict):
+            continue
+        haystack_parts.extend(
+            str(source.get(key) or "")
+            for key in ("description", "summary_zh", "summary_en")
+        )
+        haystack_parts.extend(str(tag) for tag in (source.get("tags") or []) if tag)
+    haystack = " ".join(haystack_parts).lower()
+    for category_id, keywords in QUANTSKILLS_CATEGORY_KEYWORDS.items():
+        if any(keyword in haystack for keyword in keywords):
+            return category_id
+    return None
+
+
+def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, Any] | None = None) -> dict[str, Any]:
     curation_path = local_root / "quantskills" / "data" / "curation.json"
     registry_path = local_root / "registry" / "registry.json"
     if not curation_path.is_file():
@@ -1612,6 +1660,11 @@ def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
     denylist = set(curation.get("denylist") or [])
     infra = set(curation.get("infra") or [])
     added: dict[str, str] = {}
+    registry_by_name = {
+        str(entry.get("name") or ""): entry
+        for entry in registry
+        if isinstance(entry, dict) and entry.get("name")
+    }
     for entry in registry:
         if not isinstance(entry, dict):
             continue
@@ -1621,16 +1674,31 @@ def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
             or name in denylist
             or name in infra
             or name in overrides
-            or name.startswith("agent-")
             or name.endswith("-template")
         ):
             continue
-        category = str(entry.get("category") or "").strip().lower()
-        target = REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
-        if not target:
-            tags = [str(tag).lower() for tag in entry.get("tags", []) if tag]
-            if any("factor" in tag or "alpha" in tag for tag in tags):
-                target = "02"
+        target = infer_quantskills_category(name, entry, None)
+        if target:
+            overrides[name] = target
+            added[name] = target
+
+    for repo in (report or {}).get("repositories", []):
+        if not isinstance(repo, dict):
+            continue
+        name = str(repo.get("name") or "")
+        if (
+            not name
+            or name in denylist
+            or name in infra
+            or name in overrides
+            or name.endswith("-template")
+            or repo.get("private")
+            or repo.get("archived")
+            or repo.get("disabled")
+            or not name.startswith(("skill-", "agent-"))
+        ):
+            continue
+        target = infer_quantskills_category(name, registry_by_name.get(name), repo)
         if target:
             overrides[name] = target
             added[name] = target
@@ -1640,7 +1708,7 @@ def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
             "target": "quantskills-curation",
             "status": "unchanged",
             "path": str(curation_path),
-            "action": "categoryOverride already covers registry-categorized public skill repositories",
+            "action": "categoryOverride already covers classifiable public skill and agent repositories",
             "added": {},
         }
 
@@ -1654,7 +1722,7 @@ def sync_quantskills_curation_from_registry(local_root: Path) -> dict[str, Any]:
         "target": "quantskills-curation",
         "status": "updated",
         "path": str(curation_path),
-        "action": "synchronized quantskills categoryOverride from registry categories",
+        "action": "synchronized quantskills categoryOverride from registry and public repository classifications",
         "added": added,
     }
 
@@ -1903,7 +1971,7 @@ def apply_index_updates(
                 "action": "registry generator script is missing",
             }
         )
-    records.append(sync_quantskills_curation_from_registry(local_root))
+    records.append(sync_quantskills_curation_from_registry(local_root, report))
     quantskills_script = local_root / "quantskills" / "scripts" / "build.mjs"
     if quantskills_script.is_file():
         env = dict(os.environ)

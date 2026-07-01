@@ -412,6 +412,66 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             self.assertEqual(result["status"], "updated")
             self.assertEqual(payload["categoryOverride"]["skill-factor-optimize"], "02")
 
+    def test_quantskills_curation_sync_infers_public_skill_and_agent_categories(self):
+        import json
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "registry").mkdir()
+            (root / "registry" / "registry.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "name": "skill-alpha-a06-hotmoney-reversal",
+                            "category": "uncategorized",
+                            "description": "Alpha factor from Dragon-Tiger hotmoney reversal signals.",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (root / "quantskills" / "data").mkdir(parents=True)
+            curation = root / "quantskills" / "data" / "curation.json"
+            curation.write_text(
+                json.dumps({"org": "quantskills", "denylist": [], "infra": [], "categoryOverride": {}}),
+                encoding="utf-8",
+            )
+            report = {
+                "repositories": [
+                    {
+                        "name": "skill-build-b10-factor-evaluation",
+                        "description": "Factor evaluation toolkit with IC/IR and stratified backtesting.",
+                        "private": False,
+                        "archived": False,
+                        "disabled": False,
+                    },
+                    {
+                        "name": "agent-factor-reviewer",
+                        "description": "Agent for factor review workflows.",
+                        "private": False,
+                        "archived": False,
+                        "disabled": False,
+                    },
+                    {
+                        "name": "agent-private-reviewer",
+                        "description": "Private agent should not be listed.",
+                        "private": True,
+                        "archived": False,
+                        "disabled": False,
+                    },
+                ]
+            }
+
+            result = audit.sync_quantskills_curation_from_registry(root, report)
+
+            payload = json.loads(curation.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(payload["categoryOverride"]["skill-alpha-a06-hotmoney-reversal"], "02")
+            self.assertEqual(payload["categoryOverride"]["skill-build-b10-factor-evaluation"], "02")
+            self.assertEqual(payload["categoryOverride"]["agent-factor-reviewer"], "09")
+            self.assertNotIn("agent-private-reviewer", payload["categoryOverride"])
+
     def test_skill_docs_do_not_contain_common_mojibake_tokens(self):
         mojibake_tokens = ["�", "绠€", "鎵", "馃"]
         for relative in ["SKILL.md", "README.md", "README.en.md", "skill.yml"]:

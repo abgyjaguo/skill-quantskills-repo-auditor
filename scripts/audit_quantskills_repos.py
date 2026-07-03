@@ -69,26 +69,26 @@ RUNTIME_REQUIREMENTS = [
     ("openclaw", ("agents/openai.yaml", "agents/portable-loader.md", "OPENCLAW.md")),
 ]
 REGISTRY_INDEX_EXCLUDED_REPOS = {"agent-template", "skill-template"}
+# Keys are the registry's own category enum (see registry/scripts/validate_skill.py
+# CATEGORIES); values are quantskills navigation ids. Categories intentionally left
+# unmapped (e.g. "tooling", "uncategorized") return None and stay out of the public
+# navigation. Legacy free-form keys were removed because the registry only ever emits
+# enum values, so they never matched.
 REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY = {
-    "data": "01",
     "data-api": "01",
-    "warehouse": "01",
     "factor": "02",
-    "factor-research": "02",
-    "market": "03",
-    "instrument": "03",
-    "risk": "04",
-    "alert": "04",
-    "backtest": "05",
-    "trading": "05",
-    "research": "06",
+    "analyst": "03",
+    "monitor": "04",
+    "trader-research": "05",
     "replication": "06",
-    "prediction": "07",
-    "search": "08",
-    "web-scraping": "08",
+    "research-agent": "09",
+    "monitor-agent": "09",
+    "risk-agent": "09",
+    "workflow-agent": "09",
+    "review-agent": "09",
 }
-QUANTSKILLS_CATEGORY_KEYWORDS = {
-    "01": ("pandadata", "data api", "warehouse", "dataset", "data source"),
+QUANTSKILLS_CATEGORY_SUGGESTION_KEYWORDS = {
+    "01": ("data api", "warehouse", "dataset", "data source"),
     "02": (
         "alpha",
         "factor",
@@ -167,6 +167,33 @@ AGENT_KEYWORDS = {
     "bot",
     "orchestrator",
     "research-agent",
+}
+# Chinese-first community: the keyword fallback must also read CJK text. Whole-word
+# matching does not work for Chinese (no whitespace boundaries), so these are matched
+# as substrings. Kept in sync with the ASCII sets above.
+SKILL_KEYWORDS_ZH = {
+    "因子",
+    "策略",
+    "回测",
+    "数据",
+    "接口",
+    "报告",
+    "复现",
+    "工具",
+    "分析",
+    "筛选",
+    "选股",
+    "估值",
+}
+AGENT_KEYWORDS_ZH = {
+    "智能体",
+    "代理",
+    "工作流",
+    "自动化",
+    "监控",
+    "盯盘",
+    "机器人",
+    "编排",
 }
 LOW_RISK_DOC_FILENAMES = {
     "readme",
@@ -514,25 +541,31 @@ def infer_repo_type(repo: dict[str, Any], root_names: set[str]) -> str | None:
         return "skill"
     if name.startswith("agent-"):
         return "agent"
-    if "SKILL.md" in root_names and "AGENTS.md" not in root_names:
+    has_skill_decl = "SKILL.md" in root_names
+    has_agent_decl = "AGENTS.md" in root_names
+    if has_skill_decl and not has_agent_decl:
         return "skill"
-    if "AGENTS.md" in root_names and "SKILL.md" not in root_names:
+    if has_agent_decl and not has_skill_decl:
         return "agent"
-    if "SKILL.md" in root_names:
+    if has_skill_decl and has_agent_decl:
+        # Both declaration files present: the type is ambiguous. Default to skill;
+        # audit_repo raises a type-ambiguous warning so a maintainer can resolve it.
         return "skill"
-    if "AGENTS.md" in root_names:
-        return "agent"
 
-    corpus_parts = [
-        str(repo.get("name", "")),
-        str(repo.get("description", "") or ""),
-        " ".join(str(topic) for topic in repo.get("topics", []) or []),
-    ]
-    corpus = re.sub(r"[^a-z0-9-]+", " ", " ".join(corpus_parts).lower())
-    words = set(corpus.split())
-    if words & AGENT_KEYWORDS:
+    corpus = " ".join(
+        [
+            str(repo.get("name", "")),
+            str(repo.get("description", "") or ""),
+            " ".join(str(topic) for topic in repo.get("topics", []) or []),
+        ]
+    ).lower()
+    # ASCII keywords match on word boundaries; CJK keywords match as substrings. The
+    # corpus must not be stripped of non-ASCII characters or Chinese repos lose the
+    # fallback entirely.
+    ascii_words = set(re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", corpus))
+    if (ascii_words & AGENT_KEYWORDS) or any(kw in corpus for kw in AGENT_KEYWORDS_ZH):
         return "agent"
-    if words & SKILL_KEYWORDS:
+    if (ascii_words & SKILL_KEYWORDS) or any(kw in corpus for kw in SKILL_KEYWORDS_ZH):
         return "skill"
     return None
 
@@ -742,6 +775,22 @@ def audit_repo(
                 "warn",
                 "Repository name uses agent- but files or metadata look skill-like.",
                 "Check whether this should be a skill- repository.",
+            )
+        )
+
+    if (
+        not exempt
+        and not root_unavailable
+        and not name.startswith(("skill-", "agent-"))
+        and "SKILL.md" in root_names
+        and "AGENTS.md" in root_names
+    ):
+        issues.append(
+            make_issue(
+                "type-ambiguous",
+                "warn",
+                "Repository has both root SKILL.md and AGENTS.md, so the intended type is ambiguous.",
+                "Keep only the declaration that matches the repository type: SKILL.md for skills, AGENTS.md for agents.",
             )
         )
 
@@ -1595,10 +1644,10 @@ def infer_quantskills_category(name: str, entry: dict[str, Any] | None, repo: di
         return "09"
 
     category = str((entry or {}).get("category") or "").strip().lower()
-    target = REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
-    if target:
-        return target
+    return REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
 
+
+def suggest_quantskills_category(name: str, entry: dict[str, Any] | None, repo: dict[str, Any] | None) -> str | None:
     haystack_parts = [name]
     for source in (entry, repo):
         if not isinstance(source, dict):
@@ -1609,7 +1658,7 @@ def infer_quantskills_category(name: str, entry: dict[str, Any] | None, repo: di
         )
         haystack_parts.extend(str(tag) for tag in (source.get("tags") or []) if tag)
     haystack = " ".join(haystack_parts).lower()
-    for category_id, keywords in QUANTSKILLS_CATEGORY_KEYWORDS.items():
+    for category_id, keywords in QUANTSKILLS_CATEGORY_SUGGESTION_KEYWORDS.items():
         if any(keyword in haystack for keyword in keywords):
             return category_id
     return None
@@ -1661,6 +1710,7 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
     denylist = set(curation.get("denylist") or [])
     infra = set(curation.get("infra") or [])
     added: dict[str, str] = {}
+    suggested: dict[str, str] = {}
     registry_by_name = {
         str(entry.get("name") or ""): entry
         for entry in registry
@@ -1682,6 +1732,10 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         if target:
             overrides[name] = target
             added[name] = target
+            continue
+        suggestion = suggest_quantskills_category(name, entry, None)
+        if suggestion:
+            suggested[name] = suggestion
 
     for repo in (report or {}).get("repositories", []):
         if not isinstance(repo, dict):
@@ -1703,14 +1757,19 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         if target:
             overrides[name] = target
             added[name] = target
+            continue
+        suggestion = suggest_quantskills_category(name, registry_by_name.get(name), repo)
+        if suggestion:
+            suggested[name] = suggestion
 
     if not added:
         return {
             "target": "quantskills-curation",
             "status": "unchanged",
             "path": str(curation_path),
-            "action": "categoryOverride already covers classifiable public skill and agent repositories",
+            "action": "categoryOverride already covers canonical registry categories; keyword-only matches require maintainer review",
             "added": {},
+            "suggested": suggested,
         }
 
     curation["categoryOverride"] = dict(sorted(overrides.items(), key=lambda item: (item[1], item[0].lower())))
@@ -1723,8 +1782,9 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         "target": "quantskills-curation",
         "status": "updated",
         "path": str(curation_path),
-        "action": "synchronized quantskills categoryOverride from registry and public repository classifications",
+        "action": "synchronized quantskills categoryOverride from canonical registry categories",
         "added": added,
+        "suggested": suggested,
     }
 
 

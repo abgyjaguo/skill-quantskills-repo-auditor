@@ -412,7 +412,7 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             self.assertEqual(result["status"], "updated")
             self.assertEqual(payload["categoryOverride"]["skill-factor-optimize"], "02")
 
-    def test_quantskills_curation_sync_infers_public_skill_and_agent_categories(self):
+    def test_quantskills_curation_sync_uses_canonical_categories_only(self):
         import json
         from tempfile import TemporaryDirectory
 
@@ -467,9 +467,11 @@ class AuditQuantskillsReposTests(unittest.TestCase):
 
             payload = json.loads(curation.read_text(encoding="utf-8"))
             self.assertEqual(result["status"], "updated")
-            self.assertEqual(payload["categoryOverride"]["skill-alpha-a06-hotmoney-reversal"], "02")
-            self.assertEqual(payload["categoryOverride"]["skill-build-b10-factor-evaluation"], "02")
             self.assertEqual(payload["categoryOverride"]["agent-factor-reviewer"], "09")
+            self.assertNotIn("skill-alpha-a06-hotmoney-reversal", payload["categoryOverride"])
+            self.assertNotIn("skill-build-b10-factor-evaluation", payload["categoryOverride"])
+            self.assertEqual(result["suggested"]["skill-alpha-a06-hotmoney-reversal"], "02")
+            self.assertEqual(result["suggested"]["skill-build-b10-factor-evaluation"], "02")
             self.assertNotIn("agent-private-reviewer", payload["categoryOverride"])
 
     def test_skill_docs_do_not_contain_common_mojibake_tokens(self):
@@ -477,6 +479,67 @@ class AuditQuantskillsReposTests(unittest.TestCase):
         for relative in ["SKILL.md", "README.md", "README.en.md", "skill.yml"]:
             text = (ROOT / relative).read_text(encoding="utf-8")
             self.assertFalse(any(token in text for token in mojibake_tokens), relative)
+
+    def test_infer_repo_type_reads_chinese_fallback(self):
+        agent_repo = {"name": "qihuo-xiwei", "description": "期货席位监控与盯盘自动化流程"}
+        skill_repo = {"name": "agu-yanjiu", "description": "A股因子回测与估值分析工具"}
+        self.assertEqual(audit.infer_repo_type(agent_repo, set()), "agent")
+        self.assertEqual(audit.infer_repo_type(skill_repo, set()), "skill")
+
+    def test_infer_repo_type_both_declarations_default_to_skill(self):
+        repo = {"name": "ambiguous-thing"}
+        self.assertEqual(
+            audit.infer_repo_type(repo, {"README.md", "SKILL.md", "AGENTS.md"}),
+            "skill",
+        )
+
+    def test_audit_repo_flags_both_declarations_as_ambiguous(self):
+        result = audit.audit_repo(
+            "quantskills",
+            {"name": "ambiguous-thing"},
+            {"README.md", "SKILL.md", "AGENTS.md"},
+            None,
+            set(),
+            False,
+            None,
+        )
+        codes = {issue["code"] for issue in result["issues"]}
+        self.assertIn("type-ambiguous", codes)
+
+    def test_infer_quantskills_category_maps_registry_enum(self):
+        cases = {
+            "data-api": "01",
+            "factor": "02",
+            "analyst": "03",
+            "monitor": "04",
+            "trader-research": "05",
+            "replication": "06",
+        }
+        for category, expected in cases.items():
+            with self.subTest(category=category):
+                self.assertEqual(
+                    audit.infer_quantskills_category("skill-x", {"category": category}, None),
+                    expected,
+                )
+        # tooling and uncategorized stay out of the public navigation.
+        self.assertIsNone(
+            audit.infer_quantskills_category("skill-x", {"category": "tooling"}, None)
+        )
+        self.assertIsNone(
+            audit.infer_quantskills_category(
+                "skill-pandadata-stock-screener",
+                {"description": "Pandadata-backed stock screener with valuation filters."},
+                None,
+            )
+        )
+        self.assertEqual(
+            audit.suggest_quantskills_category(
+                "skill-pandadata-stock-screener",
+                {"description": "Pandadata-backed stock screener with valuation filters."},
+                None,
+            ),
+            "03",
+        )
 
 
 if __name__ == "__main__":

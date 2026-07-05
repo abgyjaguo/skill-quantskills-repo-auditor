@@ -87,28 +87,70 @@ REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY = {
     "workflow-agent": "09",
     "review-agent": "09",
 }
-QUANTSKILLS_CATEGORY_SUGGESTION_KEYWORDS = {
-    "01": ("data api", "warehouse", "dataset", "data source"),
-    "02": (
-        "alpha",
-        "factor",
-        "ic/ir",
-        "rank ic",
-        "information coefficient",
-        "factor evaluation",
-        "factor research",
-        "dragon-tiger",
-        "hotmoney",
-        "position concentration",
-        "main divergence",
+QUANTSKILLS_CATEGORY_SUGGESTION_RULES = {
+    "01": (
+        (5, ("data api", "data warehouse", "warehouse", "dataset", "data source")),
     ),
-    "03": ("market", "stock", "futures", "options", "macro", "valuation", "dossier"),
-    "04": ("risk", "alert", "exposure", "drawdown", "volatility"),
-    "05": ("backtest", "trading", "strategy", "signal", "portfolio"),
-    "06": ("research", "replication", "paper", "report"),
-    "07": ("prediction", "forecast", "model"),
-    "08": ("search", "scraping", "crawler", "web"),
+    "02": (
+        (5, ("factor evaluation", "factor research", "rank ic", "information coefficient")),
+        (4, ("dragon tiger", "hotmoney", "position concentration", "main divergence")),
+        (3, ("alpha", "factor", "ic ir")),
+    ),
+    "03": (
+        (
+            6,
+            (
+                "smart money",
+                "lhb",
+                "northbound",
+                "portfolio health",
+                "portfolio checkup",
+                "earnings season",
+                "industry prosperity",
+            ),
+        ),
+        (5, ("stock screener", "valuation filters", "beat miss", "audit opinion", "dossier")),
+        (3, ("market", "stock", "futures", "options", "macro", "valuation")),
+    ),
+    "04": (
+        (6, ("risk alert", "event risk", "early warning", "drawdown alert")),
+        (4, ("monitor", "exposure alert", "volatility alert")),
+        (1, ("risk", "exposure", "drawdown", "volatility")),
+    ),
+    "05": (
+        (
+            6,
+            (
+                "backtest overfit",
+                "deflated sharpe",
+                "purged embargoed",
+                "portfolio optimizer",
+                "portfolio optimize",
+                "mean variance",
+                "risk parity",
+                "risk attribution",
+                "barra style",
+                "specific risk",
+            ),
+        ),
+        (5, ("backtest", "trading", "strategy", "turnover limits", "weight caps")),
+        (2, ("signal", "portfolio")),
+    ),
+    "06": (
+        (5, ("research replication", "paper replication", "report replication")),
+        (3, ("research", "replication", "paper", "report")),
+    ),
+    "07": (
+        (5, ("prediction market", "forecast model", "forecast distribution")),
+        (2, ("prediction", "forecast", "model")),
+    ),
+    "08": (
+        (5, ("web scraping", "search crawler", "information retrieval")),
+        (3, ("search", "scraping", "crawler", "web")),
+    ),
 }
+QUANTSKILLS_CATEGORY_SUGGESTION_MIN_SCORE = 4
+QUANTSKILLS_CATEGORY_SUGGESTION_MIN_MARGIN = 2
 ISSUE_REMEDIATION_CODES = {
     "repository-prefix",
     "repository-name-format",
@@ -1647,7 +1689,14 @@ def infer_quantskills_category(name: str, entry: dict[str, Any] | None, repo: di
     return REGISTRY_CATEGORY_TO_QUANTSKILLS_CATEGORY.get(category)
 
 
-def suggest_quantskills_category(name: str, entry: dict[str, Any] | None, repo: dict[str, Any] | None) -> str | None:
+def normalize_quantskills_category_text(text: str) -> str:
+    normalized = re.sub(r"[-_/&]+", " ", text.lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def explain_quantskills_category_suggestion(
+    name: str, entry: dict[str, Any] | None, repo: dict[str, Any] | None
+) -> dict[str, Any] | None:
     haystack_parts = [name]
     for source in (entry, repo):
         if not isinstance(source, dict):
@@ -1657,11 +1706,39 @@ def suggest_quantskills_category(name: str, entry: dict[str, Any] | None, repo: 
             for key in ("description", "summary_zh", "summary_en")
         )
         haystack_parts.extend(str(tag) for tag in (source.get("tags") or []) if tag)
-    haystack = " ".join(haystack_parts).lower()
-    for category_id, keywords in QUANTSKILLS_CATEGORY_SUGGESTION_KEYWORDS.items():
-        if any(keyword in haystack for keyword in keywords):
-            return category_id
-    return None
+    haystack = normalize_quantskills_category_text(" ".join(haystack_parts))
+    scores: dict[str, int] = {}
+    signals: dict[str, list[str]] = {}
+    for category_id, weighted_groups in QUANTSKILLS_CATEGORY_SUGGESTION_RULES.items():
+        for weight, phrases in weighted_groups:
+            for phrase in phrases:
+                normalized_phrase = normalize_quantskills_category_text(phrase)
+                if normalized_phrase and normalized_phrase in haystack:
+                    scores[category_id] = scores.get(category_id, 0) + weight
+                    signals.setdefault(category_id, []).append(phrase)
+    if not scores:
+        return None
+
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    category_id, score = ranked[0]
+    next_score = ranked[1][1] if len(ranked) > 1 else 0
+    if (
+        score < QUANTSKILLS_CATEGORY_SUGGESTION_MIN_SCORE
+        or score - next_score < QUANTSKILLS_CATEGORY_SUGGESTION_MIN_MARGIN
+    ):
+        return None
+    return {
+        "category": category_id,
+        "score": score,
+        "signals": signals.get(category_id, []),
+    }
+
+
+def suggest_quantskills_category(name: str, entry: dict[str, Any] | None, repo: dict[str, Any] | None) -> str | None:
+    suggestion = explain_quantskills_category_suggestion(name, entry, repo)
+    if not suggestion:
+        return None
+    return str(suggestion["category"])
 
 
 def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1711,6 +1788,7 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
     infra = set(curation.get("infra") or [])
     added: dict[str, str] = {}
     suggested: dict[str, str] = {}
+    suggested_rationale: dict[str, dict[str, Any]] = {}
     registry_by_name = {
         str(entry.get("name") or ""): entry
         for entry in registry
@@ -1733,9 +1811,11 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
             overrides[name] = target
             added[name] = target
             continue
-        suggestion = suggest_quantskills_category(name, entry, None)
+        suggestion_detail = explain_quantskills_category_suggestion(name, entry, None)
+        suggestion = str(suggestion_detail["category"]) if suggestion_detail else None
         if suggestion:
             suggested[name] = suggestion
+            suggested_rationale[name] = suggestion_detail
 
     for repo in (report or {}).get("repositories", []):
         if not isinstance(repo, dict):
@@ -1758,18 +1838,21 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
             overrides[name] = target
             added[name] = target
             continue
-        suggestion = suggest_quantskills_category(name, registry_by_name.get(name), repo)
+        suggestion_detail = explain_quantskills_category_suggestion(name, registry_by_name.get(name), repo)
+        suggestion = str(suggestion_detail["category"]) if suggestion_detail else None
         if suggestion:
             suggested[name] = suggestion
+            suggested_rationale[name] = suggestion_detail
 
     if not added:
         return {
             "target": "quantskills-curation",
             "status": "unchanged",
             "path": str(curation_path),
-            "action": "categoryOverride already covers canonical registry categories; keyword-only matches require maintainer review",
+            "action": "categoryOverride already covers canonical registry categories; business-signal suggestions require maintainer review",
             "added": {},
             "suggested": suggested,
+            "suggestedRationale": suggested_rationale,
         }
 
     curation["categoryOverride"] = dict(sorted(overrides.items(), key=lambda item: (item[1], item[0].lower())))
@@ -1785,6 +1868,7 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         "action": "synchronized quantskills categoryOverride from canonical registry categories",
         "added": added,
         "suggested": suggested,
+        "suggestedRationale": suggested_rationale,
     }
 
 

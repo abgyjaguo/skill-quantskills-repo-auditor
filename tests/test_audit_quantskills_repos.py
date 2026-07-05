@@ -472,6 +472,10 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             self.assertNotIn("skill-build-b10-factor-evaluation", payload["categoryOverride"])
             self.assertEqual(result["suggested"]["skill-alpha-a06-hotmoney-reversal"], "02")
             self.assertEqual(result["suggested"]["skill-build-b10-factor-evaluation"], "02")
+            self.assertEqual(
+                result["suggestedRationale"]["skill-build-b10-factor-evaluation"]["category"],
+                "02",
+            )
             self.assertNotIn("agent-private-reviewer", payload["categoryOverride"])
 
     def test_skill_docs_do_not_contain_common_mojibake_tokens(self):
@@ -539,6 +543,56 @@ class AuditQuantskillsReposTests(unittest.TestCase):
                 None,
             ),
             "03",
+        )
+
+    def test_suggest_quantskills_category_uses_business_semantics(self):
+        cases = {
+            "skill-smart-money-profiler": (
+                "A-share smart-money profiling skill for LHB seat identity, northbound behavior, and capital consensus.",
+                "03",
+            ),
+            "skill-portfolio-checkup": (
+                "A-share portfolio health report skill for concentration, benchmark deviation, valuation, quality, and risk exposure aggregation.",
+                "03",
+            ),
+            "skill-earnings-season-tracker": (
+                "A-share earnings-season scanner for forecast distributions, beat and miss watchlists, industry prosperity, and audit-opinion checks.",
+                "03",
+            ),
+            "skill-backtest-overfit": (
+                "Detect backtest overfitting and multiple testing: Deflated Sharpe Ratio, PBO, purged/embargoed CV.",
+                "05",
+            ),
+            "skill-portfolio-optimize": (
+                "Convex portfolio optimizer: mean-variance, risk-parity, weight caps, sector neutrality, and turnover limits.",
+                "05",
+            ),
+            "skill-risk-model": (
+                "Barra-style multi-factor risk model and risk attribution with covariance and specific risk decomposition.",
+                "05",
+            ),
+        }
+        for name, (description, expected) in cases.items():
+            with self.subTest(name=name):
+                detail = audit.explain_quantskills_category_suggestion(
+                    name,
+                    {"description": description},
+                    None,
+                )
+                self.assertIsNotNone(detail)
+                self.assertEqual(detail["category"], expected)
+                self.assertEqual(
+                    audit.suggest_quantskills_category(name, {"description": description}, None),
+                    expected,
+                )
+
+    def test_suggest_quantskills_category_skips_weak_ambiguous_signals(self):
+        self.assertIsNone(
+            audit.suggest_quantskills_category(
+                "skill-general-model",
+                {"description": "General model utility with no clear QuantSkills navigation bucket."},
+                None,
+            )
         )
 
 

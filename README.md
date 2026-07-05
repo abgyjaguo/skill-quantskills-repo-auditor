@@ -17,7 +17,7 @@
 
 本 Skill 包发布目标是个人仓库 `abgyjaguo/skill-quantskills-repo-auditor`；它审计和同步的目标仍然是 `quantskills` 组织。
 
-当本地 checkout 存在时，它还会扫描 README、声明文件和 manifest 文本，提示可能的密钥、收益承诺、官方背书、缺少 `GPL-3.0-only` 元数据和投资工作流风险声明问题。`quantskills` 导航分类只自动采用 registry 的正式 `category` 枚举；关键词命中只作为待维护者确认的建议，不直接写入 `categoryOverride`。
+当本地 checkout 存在时，它还会扫描 README、声明文件和 manifest 文本，提示可能的密钥、收益承诺、官方背书、缺少 `GPL-3.0-only` 元数据和投资工作流风险声明问题。`quantskills` 导航分类只自动采用 registry 的正式 `category` 枚举；业务语义信号会带理由输出为待维护者确认的建议，不直接写入 `categoryOverride`。
 
 ## 快速开始
 

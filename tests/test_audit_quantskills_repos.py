@@ -412,7 +412,7 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             self.assertEqual(result["status"], "updated")
             self.assertEqual(payload["categoryOverride"]["skill-factor-optimize"], "02")
 
-    def test_quantskills_curation_sync_uses_canonical_categories_only(self):
+    def test_quantskills_curation_sync_applies_high_confidence_categories(self):
         import json
         from tempfile import TemporaryDirectory
 
@@ -468,8 +468,8 @@ class AuditQuantskillsReposTests(unittest.TestCase):
             payload = json.loads(curation.read_text(encoding="utf-8"))
             self.assertEqual(result["status"], "updated")
             self.assertEqual(payload["categoryOverride"]["agent-factor-reviewer"], "09")
-            self.assertNotIn("skill-alpha-a06-hotmoney-reversal", payload["categoryOverride"])
-            self.assertNotIn("skill-build-b10-factor-evaluation", payload["categoryOverride"])
+            self.assertEqual(payload["categoryOverride"]["skill-alpha-a06-hotmoney-reversal"], "02")
+            self.assertEqual(payload["categoryOverride"]["skill-build-b10-factor-evaluation"], "02")
             self.assertEqual(result["suggested"]["skill-alpha-a06-hotmoney-reversal"], "02")
             self.assertEqual(result["suggested"]["skill-build-b10-factor-evaluation"], "02")
             self.assertEqual(

@@ -1814,6 +1814,8 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         suggestion_detail = explain_quantskills_category_suggestion(name, entry, None)
         suggestion = str(suggestion_detail["category"]) if suggestion_detail else None
         if suggestion:
+            overrides[name] = suggestion
+            added[name] = suggestion
             suggested[name] = suggestion
             suggested_rationale[name] = suggestion_detail
 
@@ -1841,6 +1843,8 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         suggestion_detail = explain_quantskills_category_suggestion(name, registry_by_name.get(name), repo)
         suggestion = str(suggestion_detail["category"]) if suggestion_detail else None
         if suggestion:
+            overrides[name] = suggestion
+            added[name] = suggestion
             suggested[name] = suggestion
             suggested_rationale[name] = suggestion_detail
 
@@ -1849,7 +1853,7 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
             "target": "quantskills-curation",
             "status": "unchanged",
             "path": str(curation_path),
-            "action": "categoryOverride already covers canonical registry categories; business-signal suggestions require maintainer review",
+            "action": "categoryOverride already covers registry and high-confidence business-signal categories",
             "added": {},
             "suggested": suggested,
             "suggestedRationale": suggested_rationale,
@@ -1865,7 +1869,7 @@ def sync_quantskills_curation_from_registry(local_root: Path, report: dict[str, 
         "target": "quantskills-curation",
         "status": "updated",
         "path": str(curation_path),
-        "action": "synchronized quantskills categoryOverride from canonical registry categories",
+        "action": "synchronized quantskills categoryOverride from registry and high-confidence business-signal categories",
         "added": added,
         "suggested": suggested,
         "suggestedRationale": suggested_rationale,
